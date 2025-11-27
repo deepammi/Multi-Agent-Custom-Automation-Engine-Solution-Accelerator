@@ -407,8 +407,8 @@ const renderPlanResponse = (
                     </Body1>
                 )}
 
-                {/* Action Buttons */}
-                {showApprovalButtons && !isCreatingPlan && (
+                {/* Action Buttons - Show if approval buttons enabled, even if plan is still being created */}
+                {showApprovalButtons && (
                     <div className={styles.buttonContainer}>
                         <Button
                             appearance="primary"

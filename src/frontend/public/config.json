@@ -1,0 +1,5 @@
+{
+  "API_URL": "http://localhost:8000/api",
+  "ENABLE_AUTH": false,
+  "APP_ENV": "dev"
+}
