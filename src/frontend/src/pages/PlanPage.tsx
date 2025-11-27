@@ -75,6 +75,14 @@ const PlanPage: React.FC = () => {
         onNavigate: pendingNavigation || (() => {})
     });
 
+    // Enable WebSocket flow immediately when plan page loads to prevent race conditions
+    useEffect(() => {
+        if (planId) {
+            console.log('🔌 [INIT] Plan page loaded, enabling WebSocket flow for plan:', planId);
+            setContinueWithWebsocketFlow(true);
+        }
+    }, [planId]);
+
     // Handle navigation with plan cancellation check
     const handleNavigationWithAlert = useCallback((navigationFn: () => void) => {
         if (!isPlanActive()) {
@@ -129,9 +137,18 @@ const PlanPage: React.FC = () => {
 
     const processAgentMessage = useCallback((agentMessageData: AgentMessageData, planData: ProcessedPlanData, is_final: boolean = false, streaming_message: string = '') => {
 
-        // Persist / forward to backend (fire-and-forget with logging)
+        // Don't persist WebSocket messages to avoid duplicates
+        // Messages from WebSocket are already stored on the backend
+        console.log('📤 Skipping persistence for WebSocket message:', agentMessageData.agent);
+        
+        // Only persist final messages for task list refresh
+        if (!is_final) {
+            return Promise.resolve();
+        }
+
+        // Persist final message only
         const agentMessageResponse = PlanDataService.createAgentMessageResponse(agentMessageData, planData, is_final, streaming_message);
-        console.log('📤 Persisting agent message:', agentMessageResponse);
+        console.log('📤 Persisting final message:', agentMessageResponse);
         const sendPromise = apiService.sendAgentMessage(agentMessageResponse)
             .then(saved => {
                 console.log('[agent_message][persisted]', {
@@ -245,9 +262,13 @@ const PlanPage: React.FC = () => {
 
             if (mPlanData) {
                 console.log('✅ Parsed plan data:', mPlanData);
+                console.log('🔘 Setting showApprovalButtons to TRUE');
                 setPlanApprovalRequest(mPlanData);
                 setWaitingForPlan(false);
                 setShowProcessingPlanSpinner(false);
+                // ✅ CRITICAL: Enable approval buttons when approval request is received
+                setShowApprovalButtons(true);
+                console.log('🔘 showApprovalButtons state updated');
                 scrollToBottom();
             } else {
                 console.error('❌ Failed to parse plan data', approvalRequest);
@@ -319,12 +340,12 @@ const PlanPage: React.FC = () => {
     //WebsocketMessageType.FINAL_RESULT_MESSAGE
     useEffect(() => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.FINAL_RESULT_MESSAGE, (finalMessage: any) => {
-            console.log('📋 Final Result Message', finalMessage);
+            console.log('📋 Final Result Message received:', finalMessage);
             if (!finalMessage) {
-
                 console.warn('⚠️ Final result message missing data:', finalMessage);
                 return;
             }
+            
             const agentMessageData = {
                 agent: AgentType.GROUP_CHAT_MANAGER,
                 agent_type: AgentMessageType.AI_AGENT,
@@ -335,16 +356,18 @@ const PlanPage: React.FC = () => {
                 raw_data: finalMessage || '',
             } as AgentMessageData;
 
-
             console.log('✅ Parsed final result message:', agentMessageData);
+            
             // we ignore the terminated message 
             if (finalMessage?.data?.status === PlanStatus.COMPLETED) {
-
+                console.log('✅ Final result received, hiding spinner');
+                
                 setShowBufferingText(true);
                 setShowProcessingPlanSpinner(false);
                 setAgentMessages(prev => [...prev, agentMessageData]);
                 setSelectedTeam(planData?.team || null);
                 scrollToBottom();
+                
                 // Persist the agent message
                 const is_final = true;
                 if (planData?.plan) {
@@ -355,10 +378,7 @@ const PlanPage: React.FC = () => {
                 // Wait for the agent message to be processed and persisted
                 // The processAgentMessage function will handle refreshing the task list
                 processAgentMessage(agentMessageData, planData, is_final, streamingMessageBuffer);
-
             }
-
-
         });
 
         return () => unsubscribe();
@@ -367,17 +387,27 @@ const PlanPage: React.FC = () => {
     //WebsocketMessageType.AGENT_MESSAGE
     useEffect(() => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.AGENT_MESSAGE, (agentMessage: any) => {
-            console.log('📋 Agent Message', agentMessage)
-            console.log('📋 Current plan data', planData);
+            console.log('📋 Agent Message received:', agentMessage);
+            console.log('📋 Current plan data:', planData);
+            
             const agentMessageData = agentMessage.data as AgentMessageData;
             if (agentMessageData) {
+                console.log('✅ Adding agent message to state:', agentMessageData.agent);
+                
                 agentMessageData.content = PlanDataService.simplifyHumanClarification(agentMessageData?.content);
-                setAgentMessages(prev => [...prev, agentMessageData]);
+                setAgentMessages(prev => {
+                    const updated = [...prev, agentMessageData];
+                    console.log('📊 Agent messages count:', updated.length);
+                    return updated;
+                });
+                
+                // Keep spinner visible while processing
                 setShowProcessingPlanSpinner(true);
                 scrollToBottom();
                 processAgentMessage(agentMessageData, planData);
+            } else {
+                console.warn('⚠️ No agent message data found');
             }
-
         });
 
         return () => unsubscribe();
@@ -396,6 +426,18 @@ const PlanPage: React.FC = () => {
         return () => clearInterval(interval);
     }, [loading]);
 
+    // Timeout protection for spinner - prevent infinite spinning
+    useEffect(() => {
+        if (showProcessingPlanSpinner) {
+            const timeout = setTimeout(() => {
+                console.warn('⚠️ Spinner timeout - hiding spinner after 30 seconds');
+                setShowProcessingPlanSpinner(false);
+            }, 30000);
+            
+            return () => clearTimeout(timeout);
+        }
+    }, [showProcessingPlanSpinner]);
+
     // WebSocket connection with proper error handling and v3 backend compatibility
     useEffect(() => {
         if (planId && continueWithWebsocketFlow) {
@@ -403,6 +445,9 @@ const PlanPage: React.FC = () => {
 
             const connectWebSocket = async () => {
                 try {
+                    // Small delay to ensure listeners are attached before connecting
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    console.log('🔌 [CONNECT] Attempting WebSocket connection...');
                     await webSocketService.connect(planId);
                     console.log('✅ WebSocket connected successfully');
                 } catch (error) {
@@ -471,11 +516,9 @@ const PlanPage: React.FC = () => {
                 console.log("Fetching plan with ID:", planId);
                 planResult = await PlanDataService.fetchPlanData(planId, useCache);
                 console.log("Plan data fetched:", planResult);
-                if (planResult?.plan?.overall_status === PlanStatus.IN_PROGRESS) {
-                    setShowApprovalButtons(true);
-
-                } else {
-                    setShowApprovalButtons(false);
+                // Don't set showApprovalButtons here - let the WebSocket listener handle it
+                // when the approval request is received
+                if (planResult?.plan?.overall_status !== PlanStatus.IN_PROGRESS) {
                     setWaitingForPlan(false);
                 }
                 if (planResult?.plan?.overall_status !== PlanStatus.COMPLETED) {
@@ -513,6 +556,9 @@ const PlanPage: React.FC = () => {
         setProcessingApproval(true);
         let id = showToast("Submitting Approval", "progress");
         try {
+            console.log('🔍 [DEBUG] Approval being sent for plan:', planApprovalRequest.id);
+            console.log('🔍 [DEBUG] WebSocket connected:', wsConnected);
+            
             await apiService.approvePlan({
                 m_plan_id: planApprovalRequest.id,
                 plan_id: planData?.plan?.id,
@@ -523,6 +569,9 @@ const PlanPage: React.FC = () => {
             dismissToast(id);
             setShowProcessingPlanSpinner(true);
             setShowApprovalButtons(false);
+            
+            console.log('🔍 [DEBUG] Approval sent, waiting for agent messages...');
+            console.log('🔍 [DEBUG] Current agent messages:', agentMessages.length);
 
         } catch (error) {
             dismissToast(id);
@@ -531,7 +580,7 @@ const PlanPage: React.FC = () => {
         } finally {
             setProcessingApproval(false);
         }
-    }, [planApprovalRequest, planData, setProcessingApproval]);
+    }, [planApprovalRequest, planData, setProcessingApproval, wsConnected, agentMessages]);
 
     // Handle plan rejection  
     const handleRejectPlan = useCallback(async () => {

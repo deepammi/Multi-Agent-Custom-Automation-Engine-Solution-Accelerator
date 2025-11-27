@@ -276,6 +276,49 @@ export class PlanDataService {
     try {
       if (!rawData) return null;
 
+      // Handle new JSON format from backend
+      if (typeof rawData === 'object' && rawData.id && rawData.steps) {
+        // New format: { id, plan_id, m_plan_id, user_request, status, steps, facts, context, timestamp }
+        const steps = (rawData.steps || []).map((step: any, i: number) => {
+          const action = step.action || '';
+          const cleanAction = action
+            .replace(/\*\*/g, '')
+            .replace(/^Certainly!\s*/i, '')
+            .replace(/^Given the team composition and the available facts,?\s*/i, '')
+            .replace(/^here is a (?:concise )?plan[^.]*\.\s*/i, '')
+            .replace(/^(?:here is|this is) a (?:concise )?(?:plan|approach|strategy)[^.]*[.:]\s*/i, '')
+            .replace(/^\*\*([^*]+)\*\*:?\s*/g, '$1: ')
+            .replace(/^[-•]\s*/, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          return {
+            id: step.id || (i + 1),
+            action,
+            cleanAction,
+            agent: step.agent || 'System'
+          };
+        });
+
+        const result: MPlanData = {
+          id: rawData.id || rawData.plan_id || 'unknown',
+          status: (rawData.status || 'PENDING_APPROVAL').toUpperCase(),
+          user_request: rawData.user_request || 'Plan approval required',
+          team: rawData.team || [],
+          facts: rawData.facts || '',
+          steps,
+          context: {
+            task: rawData.user_request || 'Plan approval required',
+            participant_descriptions: rawData.context?.participant_descriptions || {}
+          },
+          user_id: rawData.user_id,
+          team_id: rawData.team_id,
+          plan_id: rawData.plan_id || rawData.id,
+          overall_status: rawData.status || 'PENDING_APPROVAL',
+          raw_data: rawData
+        };
+        return result;
+      }
+
       // Normalize to the PlanApprovalRequest(...) string that contains MPlan(...)
       let source: string | null = null;
 

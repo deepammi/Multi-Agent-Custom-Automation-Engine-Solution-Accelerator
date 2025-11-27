@@ -20,27 +20,47 @@ const AppWrapper = () => {
   const [config, setConfig] = useState<ConfigType>(defaultConfig);
   useEffect(() => {
     const initConfig = async () => {
-      window.appConfig = config;
-      setEnvData(config);
-      setApiUrl(config.API_URL);
+      // Set default config first
+      window.appConfig = defaultConfig;
+      setEnvData(defaultConfig);
+      setApiUrl(defaultConfig.API_URL);
+      
       try {
-        const response = await fetch('/config');
-        let config = defaultConfig;
+        // Try to load config from /config.json (static file)
+        const response = await fetch('/config.json');
+        let loadedConfig = defaultConfig;
+        
         if (response.ok) {
-          config = await response.json();
-          config.ENABLE_AUTH = toBoolean(config.ENABLE_AUTH);
+          loadedConfig = await response.json();
+          loadedConfig.ENABLE_AUTH = toBoolean(loadedConfig.ENABLE_AUTH);
+          console.log('✅ Config loaded from /config.json:', loadedConfig);
+        } else {
+          console.info('ℹ️ Using default config (config.json not found)');
         }
 
-        window.appConfig = config;
-        setEnvData(config);
-        setApiUrl(config.API_URL);
-        setConfig(config);
-        let defaultUserInfo = config.ENABLE_AUTH ? await getUserInfo() : ({} as UserInfo);
+        window.appConfig = loadedConfig;
+        setEnvData(loadedConfig);
+        setApiUrl(loadedConfig.API_URL);
+        setConfig(loadedConfig);
+        
+        // Handle user info
+        let defaultUserInfo = loadedConfig.ENABLE_AUTH ? await getUserInfo() : ({} as UserInfo);
         window.userInfo = defaultUserInfo;
         setUserInfoGlobal(defaultUserInfo);
-        const browserLanguage = await apiService.sendUserBrowserLanguage();
+        
+        // Try to send browser language (non-blocking)
+        try {
+          await apiService.sendUserBrowserLanguage();
+        } catch (langError) {
+          console.info('ℹ️ Could not send browser language (backend may not be ready)');
+        }
       } catch (error) {
-        console.info("frontend config did not load from python", error);
+        console.error("❌ Error loading config:", error);
+        // Use default config on error
+        window.appConfig = defaultConfig;
+        setEnvData(defaultConfig);
+        setApiUrl(defaultConfig.API_URL);
+        setConfig(defaultConfig);
       } finally {
         setIsConfigLoaded(true);
         setIsUserInfoLoaded(true);
@@ -64,7 +84,21 @@ const AppWrapper = () => {
     mediaQuery.addEventListener("change", handleThemeChange);
     return () => mediaQuery.removeEventListener("change", handleThemeChange);
   }, []);
-  if (!isConfigLoaded || !isUserInfoLoaded) return <div>Loading...</div>;
+  if (!isConfigLoaded || !isUserInfoLoaded) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '18px',
+        color: '#666'
+      }}>
+        Loading configuration...
+      </div>
+    );
+  }
+  
   return (
     <StrictMode>
       <FluentProvider theme={isDarkMode ? teamsDarkTheme : teamsLightTheme} style={{ height: "100vh" }}>
@@ -73,7 +107,80 @@ const AppWrapper = () => {
     </StrictMode>
   );
 };
-root.render(<AppWrapper />);
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('React Error Boundary caught an error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ 
+          padding: '20px', 
+          maxWidth: '800px', 
+          margin: '50px auto',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        }}>
+          <h1 style={{ color: '#d32f2f' }}>⚠️ Application Error</h1>
+          <p>Something went wrong. Please check the console for details.</p>
+          <details style={{ marginTop: '20px' }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>Error Details</summary>
+            <pre style={{ 
+              background: '#f5f5f5', 
+              padding: '15px', 
+              borderRadius: '4px',
+              overflow: 'auto',
+              marginTop: '10px'
+            }}>
+              {this.state.error?.toString()}
+              {'\n\n'}
+              {this.state.error?.stack}
+            </pre>
+          </details>
+          <button 
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: '20px',
+              padding: '10px 20px',
+              fontSize: '16px',
+              cursor: 'pointer',
+              background: '#1976d2',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px'
+            }}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// Wrap AppWrapper with ErrorBoundary
+const AppWithErrorBoundary = () => (
+  <ErrorBoundary>
+    <AppWrapper />
+  </ErrorBoundary>
+);
+root.render(<AppWithErrorBoundary />);
 // If you want to start measuring performance in your app, pass a function
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
