@@ -126,3 +126,32 @@ def approval_checkpoint_node(state: AgentState) -> Dict[str, Any]:
         "approval_required": True,
         "approved": None
     }
+
+
+def hitl_agent_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Human-in-the-Loop (HITL) agent node - requests human approval or revision.
+    Phase 7: Takes specialized agent result and formats clarification request.
+    
+    **Feature: multi-agent-hitl-loop, Property 1: HITL Routing**
+    **Validates: Requirements 1.1, 1.2**
+    """
+    plan_id = state["plan_id"]
+    final_result = state.get("final_result", "")
+    current_agent = state.get("current_agent", "Unknown")
+    
+    logger.info(f"HITL Agent processing result from {current_agent} for plan {plan_id}")
+    
+    # Format clarification request message
+    clarification_message = (
+        f"I've reviewed the {current_agent} Agent's work:\n\n"
+        f"{final_result}\n\n"
+        f"Please review this result and let me know if you'd like to approve it or provide revisions."
+    )
+    
+    return {
+        "messages": [clarification_message],
+        "current_agent": "HITL",
+        "clarification_required": True,
+        "clarification_message": clarification_message
+    }

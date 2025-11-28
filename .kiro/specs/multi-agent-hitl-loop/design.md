@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design implements a multi-agent workflow with human-in-the-loop approval and revision capability. The system allows specialized agents to process tasks, then routes results to a HITL agent that requests human approval. If the human provides feedback, the task loops back to the Planner with full context retention for re-processing.
+This design implements a multi-agent workflow with human-in-the-loop approval and revision capability. The system allows specialized agents to process tasks, then routes results to a HITL agent that requests human approval. If the human provides feedback, the task loops directly back to the specialized agent for re-processing with the revision context.
 
 ## Architecture
 
@@ -17,7 +17,7 @@ HITL Agent (requests approval/revision)
     ↓
 User Clarification
     ├→ Approve → Complete
-    └→ Revise → Loop back to Planner (with context)
+    └→ Revise → Loop back to Specialized Agent (directly, with context)
 ```
 
 ## Components and Interfaces
@@ -129,7 +129,7 @@ A property is a characteristic or behavior that should hold true across all vali
 **Validates: Requirements 1.3**
 
 ### Property 4: Revision Loop
-*For any* clarification request, when the user provides a revision, the system SHALL send the revised task back to the Planner with full context retained.
+*For any* clarification request, when the user provides a revision, the system SHALL send the revised task directly back to the specialized agent with full context retained.
 **Validates: Requirements 1.4, 2.3**
 
 ### Property 5: Optional HITL
@@ -137,7 +137,7 @@ A property is a characteristic or behavior that should hold true across all vali
 **Validates: Requirements 3.1, 3.2**
 
 ### Property 6: Unlimited Iterations
-*For any* number of revisions provided by the user, the system SHALL process each revision and loop back to the Planner without limit.
+*For any* number of revisions provided by the user, the system SHALL process each revision and loop back to the specialized agent without limit.
 **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
 
 ## Error Handling
@@ -164,9 +164,9 @@ A property is a characteristic or behavior that should hold true across all vali
 - Property 6: Unlimited iteration handling
 
 ### Integration Tests
-- End-to-end flow: Task → Specialized Agent → HITL → Approval → Complete
-- End-to-end flow: Task → Specialized Agent → HITL → Revision → Loop → Complete
-- Multiple revision loops
+- End-to-end flow: Task → Planner → Specialized Agent → HITL → Approval → Complete
+- End-to-end flow: Task → Planner → Specialized Agent → HITL → Revision → Specialized Agent (direct) → HITL → Complete
+- Multiple revision loops with direct specialized agent routing
 - Mixed approval and revision scenarios
 
 ### Testing Framework

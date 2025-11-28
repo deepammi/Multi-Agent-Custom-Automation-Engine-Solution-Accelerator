@@ -18,16 +18,17 @@ async def websocket_endpoint(websocket: WebSocket, plan_id: str, user_id: str = 
     await websocket_manager.connect(websocket, plan_id, user_id)
     
     try:
-        # Send initial connection message
-        await websocket.send_json({
-            "type": "agent_message",
-            "data": {
-                "agent_name": "System",
-                "content": f"Connected to plan {plan_id}",
-                "status": "connected",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        })
+        # Don't send initial connection message - it's not useful for users
+        # The first meaningful message will be from the Planner agent
+        # await websocket.send_json({
+        #     "type": "agent_message",
+        #     "data": {
+        #         "agent_name": "System",
+        #         "content": "Task session started. Agents are ready to assist you.",
+        #         "status": "connected",
+        #         "timestamp": datetime.utcnow().isoformat() + "Z"
+        #     }
+        # })
         
         # Keep connection alive and listen for messages
         while True:
@@ -41,7 +42,7 @@ async def websocket_endpoint(websocket: WebSocket, plan_id: str, user_id: str = 
                 # Respond to ping with pong
                 await websocket.send_json({
                     "type": "pong",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.utcnow().isoformat() + "Z"  # Ensure UTC timezone marker
                 })
             
             elif message_type == "plan_approval_response":

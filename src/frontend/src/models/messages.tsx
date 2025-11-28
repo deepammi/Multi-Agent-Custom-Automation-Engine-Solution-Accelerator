@@ -150,4 +150,5 @@ export interface ParsedUserClarification {
     type: WebsocketMessageType.USER_CLARIFICATION_REQUEST;
     question: string;
     request_id: string;
+    agent_result?: string;
 }
