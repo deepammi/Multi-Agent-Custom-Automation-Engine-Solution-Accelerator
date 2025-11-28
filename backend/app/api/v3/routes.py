@@ -125,14 +125,30 @@ async def plan_approval(request: PlanApprovalRequest, background_tasks: Backgrou
 
 
 @router.post("/user_clarification")
-async def user_clarification(request: dict):
+async def user_clarification(request: dict, background_tasks: BackgroundTasks):
     """
     Handle user clarification responses.
-    Phase 6+: Will be implemented for clarification flow.
+    Phase 7: Processes approval vs revision and loops back if needed.
     """
     logger.info(f"User clarification received for plan {request.get('plan_id')}")
+    
+    plan_id = request.get("plan_id")
+    request_id = request.get("request_id", "")
+    answer = request.get("answer", "")
+    
+    if not plan_id:
+        raise HTTPException(status_code=400, detail="plan_id is required")
+    
+    # Process clarification in background
+    background_tasks.add_task(
+        AgentService.handle_user_clarification,
+        plan_id,
+        request_id,
+        answer
+    )
+    
     return {
-        "status": "received",
+        "status": "processing",
         "session_id": request.get("session_id", str(uuid.uuid4()))
     }
 

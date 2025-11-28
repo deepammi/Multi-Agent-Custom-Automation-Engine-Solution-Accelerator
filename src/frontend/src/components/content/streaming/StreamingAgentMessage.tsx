@@ -146,9 +146,37 @@ const renderAgentMessages = (
   const validMessages = agentMessages.filter(msg => msg.content?.trim());
   if (!validMessages.length) return null;
 
+  // Filter out "Plan created" messages from Group_Chat_Manager (redundant with plan display)
+  // Keep Planner messages for user context throughout the conversation
+  const filteredMessages = validMessages.filter(msg => {
+    // Remove "Plan created" messages (these are just status updates)
+    if (msg.content?.includes('Plan created - awaiting approval')) {
+      console.log('🚫 Filtering out "Plan created" message (shown in plan approval)');
+      return false;
+    }
+    return true;
+  });
+
+  if (!filteredMessages.length) return null;
+
+  // Sort messages chronologically by timestamp
+  const sortedMessages = [...filteredMessages].sort((a, b) => {
+    const timeA = typeof a.timestamp === 'number' ? a.timestamp : new Date(a.timestamp).getTime();
+    const timeB = typeof b.timestamp === 'number' ? b.timestamp : new Date(b.timestamp).getTime();
+    return timeA - timeB;
+  });
+  
+  // Log sorted message order for debugging
+  console.log('📊 Sorted messages order (after filtering):', sortedMessages.map((m, i) => ({
+    index: i,
+    agent: m.agent,
+    timestamp: m.timestamp,
+    content: m.content.substring(0, 30)
+  })));
+
   return (
     <>
-      {validMessages.map((msg, index) => {
+      {sortedMessages.map((msg, index) => {
         const isHuman = msg.agent_type === AgentMessageType.HUMAN_AGENT;
         const isClarification = !isHuman && isClarificationMessage(msg.content || '');
 

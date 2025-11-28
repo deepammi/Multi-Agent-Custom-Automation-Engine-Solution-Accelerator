@@ -60,6 +60,9 @@ const PlanPage: React.FC = () => {
 
     // Plan approval state - track when plan is approved
     const [planApproved, setPlanApproved] = useState<boolean>(false);
+    
+    // Track if task is completed to prevent spinner from showing again
+    const [taskCompleted, setTaskCompleted] = useState<boolean>(false);
 
     // Plan cancellation dialog state
     const [showCancellationDialog, setShowCancellationDialog] = useState<boolean>(false);
@@ -199,6 +202,7 @@ const PlanPage: React.FC = () => {
         setStreamingMessageBuffer("");
         setShowBufferingText(false);
         setAgentMessages([]);
+        setTaskCompleted(false);
     }, [
         setInput,
         setPlanData,
@@ -264,6 +268,20 @@ const PlanPage: React.FC = () => {
                 console.log('✅ Parsed plan data:', mPlanData);
                 console.log('🔘 Setting showApprovalButtons to TRUE');
                 setPlanApprovalRequest(mPlanData);
+                
+                // Also add plan approval as an agent message for chronological display
+                const planApprovalMessage = {
+                    agent: AgentType.GROUP_CHAT_MANAGER,
+                    agent_type: AgentMessageType.AI_AGENT,
+                    timestamp: new Date().toISOString(),
+                    steps: [],
+                    next_steps: [],
+                    content: `📋 Plan created - awaiting approval`,
+                    raw_data: JSON.stringify(mPlanData) || '',
+                } as AgentMessageData;
+                
+                setAgentMessages(prev => [...prev, planApprovalMessage]);
+                
                 setWaitingForPlan(false);
                 setShowProcessingPlanSpinner(false);
                 // ✅ CRITICAL: Enable approval buttons when approval request is received
@@ -302,29 +320,40 @@ const PlanPage: React.FC = () => {
                 console.warn('⚠️ clarification message missing data:', clarificationMessage);
                 return;
             }
-            const agentMessageData = {
-                agent: AgentType.GROUP_CHAT_MANAGER,
-                agent_type: AgentMessageType.AI_AGENT,
-                timestamp: clarificationMessage.timestamp || Date.now(),
-                steps: [],   // intentionally always empty
-                next_steps: [],  // intentionally always empty
-                content: clarificationMessage.data.question || '',
-                raw_data: clarificationMessage.data || '',
-            } as AgentMessageData;
-            console.log('✅ Parsed clarification message:', agentMessageData);
-            setClarificationMessage(clarificationMessage.data as ParsedUserClarification | null);
-            setAgentMessages(prev => [...prev, agentMessageData]);
+            
+            // Handle both old format (with .data) and new format (direct properties)
+            const messageData = clarificationMessage.data || clarificationMessage;
+            const question = messageData.question || 'Please approve or provide revision';
+            const request_id = messageData.request_id || '';
+            const agent_result = messageData.agent_result || '';
+            
+            console.log('✅ Parsed clarification message with agent_result:', agent_result);
+            
+            // Store the clarification message with agent_result for ClarificationUI
+            // Do NOT add to agentMessages - ClarificationUI will be rendered directly
+            setClarificationMessage({
+                type: WebsocketMessageType.USER_CLARIFICATION_REQUEST,
+                question,
+                request_id,
+                agent_result
+            } as any);
+            
+            // Log current agent messages when clarification is shown
+            console.log('🔍 CLARIFICATION SHOWN - Current agent messages:', agentMessages.map(m => ({
+                agent: m.agent,
+                content: m.content.substring(0, 30),
+                timestamp: m.timestamp
+            })));
+            
             setShowBufferingText(false);
             setShowProcessingPlanSpinner(false);
             setSubmittingChatDisableInput(false);
             scrollToBottom();
-            // Persist the agent message
-            processAgentMessage(agentMessageData, planData);
 
         });
 
         return () => unsubscribe();
-    }, [scrollToBottom, planData, processAgentMessage]);
+    }, [scrollToBottom, planData, processAgentMessage, agentMessages]);
     //WebsocketMessageType.AGENT_TOOL_MESSAGE
     useEffect(() => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.AGENT_TOOL_MESSAGE, (toolMessage: any) => {
@@ -341,15 +370,31 @@ const PlanPage: React.FC = () => {
     useEffect(() => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.FINAL_RESULT_MESSAGE, (finalMessage: any) => {
             console.log('📋 Final Result Message received:', finalMessage);
+            console.log('📋 Final Result Message data:', finalMessage?.data);
+            console.log('📋 Final Result Message status:', finalMessage?.data?.status);
+            
             if (!finalMessage) {
                 console.warn('⚠️ Final result message missing data:', finalMessage);
                 return;
             }
             
+            // ALWAYS mark task as completed and hide spinner when final result is received
+            // This prevents any race conditions with agent messages
+            console.log('✅ Final result received, marking task as completed and hiding spinner');
+            console.log('🔍 Current showProcessingPlanSpinner:', showProcessingPlanSpinner);
+            console.log('🔍 Current taskCompleted:', taskCompleted);
+            
+            // Use functional updates to ensure we're working with the latest state
+            setTaskCompleted(true);
+            setShowProcessingPlanSpinner(false);
+            setShowBufferingText(false);
+            
+            console.log('🔍 After setting - taskCompleted should be true, spinner should be false');
+            
             const agentMessageData = {
                 agent: AgentType.GROUP_CHAT_MANAGER,
                 agent_type: AgentMessageType.AI_AGENT,
-                timestamp: Date.now(),
+                timestamp: new Date().toISOString(),
                 steps: [],   // intentionally always empty
                 next_steps: [],  // intentionally always empty
                 content: "🎉🎉 " + (finalMessage.data?.content || ''),
@@ -358,14 +403,17 @@ const PlanPage: React.FC = () => {
 
             console.log('✅ Parsed final result message:', agentMessageData);
             
-            // we ignore the terminated message 
-            if (finalMessage?.data?.status === PlanStatus.COMPLETED) {
-                console.log('✅ Final result received, hiding spinner');
+            // Handle both "completed" and "COMPLETED" status values
+            const status = finalMessage?.data?.status?.toLowerCase();
+            if (status === 'completed') {
+                console.log('✅ Task completed successfully');
                 
-                setShowBufferingText(true);
-                setShowProcessingPlanSpinner(false);
+                // Clear approval request to hide approval buttons
+                setPlanApprovalRequest(null);
+                
                 setAgentMessages(prev => [...prev, agentMessageData]);
                 setSelectedTeam(planData?.team || null);
+                
                 scrollToBottom();
                 
                 // Persist the agent message
@@ -378,6 +426,20 @@ const PlanPage: React.FC = () => {
                 // Wait for the agent message to be processed and persisted
                 // The processAgentMessage function will handle refreshing the task list
                 processAgentMessage(agentMessageData, planData, is_final, streamingMessageBuffer);
+            } else if (status === 'rejected') {
+                console.log('✅ Task rejected');
+                
+                // Clear approval request to hide approval buttons
+                setPlanApprovalRequest(null);
+                
+                setAgentMessages(prev => [...prev, agentMessageData]);
+                
+                scrollToBottom();
+            } else {
+                console.warn('⚠️ Unknown final result status:', status);
+                // Still add the message even if status is unknown
+                setAgentMessages(prev => [...prev, agentMessageData]);
+                scrollToBottom();
             }
         });
 
@@ -389,6 +451,8 @@ const PlanPage: React.FC = () => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.AGENT_MESSAGE, (agentMessage: any) => {
             console.log('📋 Agent Message received:', agentMessage);
             console.log('📋 Current plan data:', planData);
+            console.log('📋 Clarification message pending:', !!clarificationMessage);
+            console.log('📋 Task completed status:', taskCompleted);
             
             const agentMessageData = agentMessage.data as AgentMessageData;
             if (agentMessageData) {
@@ -396,13 +460,56 @@ const PlanPage: React.FC = () => {
                 
                 agentMessageData.content = PlanDataService.simplifyHumanClarification(agentMessageData?.content);
                 setAgentMessages(prev => {
-                    const updated = [...prev, agentMessageData];
+                    const updated = [...prev];
+                    
+                    // Check for duplicate messages (same agent, same content, within 1 second)
+                    const isDuplicate = updated.some(msg => {
+                        if (msg.agent !== agentMessageData.agent) return false;
+                        if (msg.content !== agentMessageData.content) return false;
+                        
+                        // Check if timestamps are within 1 second of each other
+                        const msgTime = typeof msg.timestamp === 'number' ? msg.timestamp : new Date(msg.timestamp).getTime();
+                        const newTime = typeof agentMessageData.timestamp === 'number' ? agentMessageData.timestamp : new Date(agentMessageData.timestamp).getTime();
+                        return Math.abs(msgTime - newTime) < 1000;
+                    });
+                    
+                    if (isDuplicate) {
+                        console.log('⚠️ Duplicate message detected, skipping:', {
+                            agent: agentMessageData.agent,
+                            content: agentMessageData.content.substring(0, 50),
+                            timestamp: agentMessageData.timestamp
+                        });
+                        return prev; // Return original array without adding duplicate
+                    }
+                    
+                    console.log('✅ Adding new message:', {
+                        agent: agentMessageData.agent,
+                        content: agentMessageData.content.substring(0, 50),
+                        timestamp: agentMessageData.timestamp,
+                        totalMessages: updated.length + 1,
+                        allAgents: updated.map(m => m.agent).join(', ')
+                    });
+                    
+                    // Add the agent message
+                    updated.push(agentMessageData);
                     console.log('📊 Agent messages count:', updated.length);
                     return updated;
                 });
                 
-                // Keep spinner visible while processing
-                setShowProcessingPlanSpinner(true);
+                // Only show spinner if task is not completed and this is not a completion message
+                const isCompletionMessage = agentMessageData.content?.includes('🎉') || 
+                                           agentMessageData.content?.includes('completed successfully') ||
+                                           agentMessageData.content?.includes('Task approved');
+                
+                if (!taskCompleted && !isCompletionMessage) {
+                    setShowProcessingPlanSpinner(true);
+                    console.log('🔄 Showing spinner for agent message');
+                } else {
+                    console.log('✅ Task completed or completion message, not showing spinner');
+                    // Ensure spinner is hidden if task is completed
+                    setShowProcessingPlanSpinner(false);
+                }
+                
                 scrollToBottom();
                 processAgentMessage(agentMessageData, planData);
             } else {
@@ -411,7 +518,7 @@ const PlanPage: React.FC = () => {
         });
 
         return () => unsubscribe();
-    }, [scrollToBottom, planData, processAgentMessage]); //onPlanReceived, scrollToBottom
+    }, [scrollToBottom, planData, processAgentMessage, clarificationMessage, taskCompleted]); //onPlanReceived, scrollToBottom
 
     // Loading message rotation effect
     useEffect(() => {
@@ -428,7 +535,7 @@ const PlanPage: React.FC = () => {
 
     // Timeout protection for spinner - prevent infinite spinning
     useEffect(() => {
-        if (showProcessingPlanSpinner) {
+        if (showProcessingPlanSpinner && !taskCompleted) {
             const timeout = setTimeout(() => {
                 console.warn('⚠️ Spinner timeout - hiding spinner after 30 seconds');
                 setShowProcessingPlanSpinner(false);
@@ -436,7 +543,7 @@ const PlanPage: React.FC = () => {
             
             return () => clearTimeout(timeout);
         }
-    }, [showProcessingPlanSpinner]);
+    }, [showProcessingPlanSpinner, taskCompleted]);
 
     // WebSocket connection with proper error handling and v3 backend compatibility
     useEffect(() => {
@@ -524,9 +631,11 @@ const PlanPage: React.FC = () => {
                 if (planResult?.plan?.overall_status !== PlanStatus.COMPLETED) {
                     setContinueWithWebsocketFlow(true);
                 }
-                if (planResult?.messages) {
-                    setAgentMessages(planResult.messages);
-                }
+                // Don't load messages from database - we'll receive them via WebSocket
+                // This prevents message ordering issues where persisted messages appear out of order
+                // if (planResult?.messages) {
+                //     setAgentMessages(planResult.messages);
+                // }
                 if (planResult?.mplan) {
                     setPlanApprovalRequest(planResult.mplan);
                 }
@@ -567,7 +676,13 @@ const PlanPage: React.FC = () => {
             });
 
             dismissToast(id);
-            setShowProcessingPlanSpinner(true);
+            // Only show spinner if task is not already completed
+            if (!taskCompleted) {
+                setShowProcessingPlanSpinner(true);
+                console.log('🔄 Showing spinner after approval');
+            } else {
+                console.log('✅ Task already completed, not showing spinner');
+            }
             setShowApprovalButtons(false);
             
             console.log('🔍 [DEBUG] Approval sent, waiting for agent messages...');
@@ -623,6 +738,21 @@ const PlanPage: React.FC = () => {
             setSubmittingChatDisableInput(true);
             let id = showToast("Submitting clarification", "progress");
 
+            // Create the human message BEFORE submitting to ensure correct timestamp order
+            const humanMessageData = {
+                agent: 'human',
+                agent_type: AgentMessageType.HUMAN_AGENT,
+                timestamp: new Date().toISOString(),
+                steps: [],   // intentionally always empty
+                next_steps: [],  // intentionally always empty
+                content: chatInput || '',
+                raw_data: chatInput || '',
+            } as AgentMessageData;
+            
+            // Add human message immediately to show in the chat
+            setAgentMessages(prev => [...prev, humanMessageData]);
+            console.log('✅ Added human message to chat:', chatInput);
+
             try {
                 // Use legacy method for non-v3 backends
                 const response = await PlanDataService.submitClarification({
@@ -636,20 +766,22 @@ const PlanPage: React.FC = () => {
                 setInput("");
                 dismissToast(id);
                 showToast("Clarification submitted successfully", "success");
-
-                const agentMessageData = {
-                    agent: 'human',
-                    agent_type: AgentMessageType.HUMAN_AGENT,
-                    timestamp: Date.now(),
-                    steps: [],   // intentionally always empty
-                    next_steps: [],  // intentionally always empty
-                    content: chatInput || '',
-                    raw_data: chatInput || '',
-                } as AgentMessageData;
-
-                setAgentMessages(prev => [...prev, agentMessageData]);
-                setSubmittingChatDisableInput(true);
-                setShowProcessingPlanSpinner(true);
+                
+                // Clear clarification message to hide the UI
+                setClarificationMessage(null);
+                
+                // Keep input disabled while waiting for agent response
+                // Only show spinner if task is not already completed
+                // Use a callback to check the current taskCompleted state
+                setTaskCompleted(currentTaskCompleted => {
+                    if (!currentTaskCompleted) {
+                        setShowProcessingPlanSpinner(true);
+                        console.log('🔄 Showing spinner after clarification submission');
+                    } else {
+                        console.log('✅ Task already completed, not showing spinner after clarification');
+                    }
+                    return currentTaskCompleted; // Don't change the value, just read it
+                });
                 scrollToBottom();
 
             } catch (error: any) {
@@ -662,10 +794,10 @@ const PlanPage: React.FC = () => {
                 );
 
             } finally {
-
+                // Don't re-enable input here - let the agent message handler do it
             }
         },
-        [planData?.plan, showToast, dismissToast, loadPlanData]
+        [planData?.plan, showToast, dismissToast, loadPlanData, taskCompleted, clarificationMessage, planApprovalRequest]
     );
 
 
@@ -783,6 +915,7 @@ const PlanPage: React.FC = () => {
                                 processingApproval={processingApproval}
                                 handleApprovePlan={handleApprovePlan}
                                 handleRejectPlan={handleRejectPlan}
+                                clarificationMessage={clarificationMessage}
 
                             />
                         </>

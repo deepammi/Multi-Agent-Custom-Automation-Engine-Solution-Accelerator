@@ -225,9 +225,17 @@ class WebSocketService {
             case WebsocketMessageType.USER_CLARIFICATION_REQUEST: {
                 console.log("Message clarification':", message);
                 if (message.data) {
-                    const transformed = PlanDataService.parseUserClarificationRequest(message);
-                    console.log('WebSocket USER_CLARIFICATION_REQUEST message received:', transformed);
-                    this.emit(WebsocketMessageType.USER_CLARIFICATION_REQUEST, transformed);
+                    // Check if this is already a proper JSON object (new format)
+                    if (message.data.question && message.data.request_id) {
+                        // New format: direct JSON object
+                        console.log('WebSocket USER_CLARIFICATION_REQUEST message received (new format):', message.data);
+                        this.emit(WebsocketMessageType.USER_CLARIFICATION_REQUEST, message.data);
+                    } else {
+                        // Old format: try to parse string
+                        const transformed = PlanDataService.parseUserClarificationRequest(message);
+                        console.log('WebSocket USER_CLARIFICATION_REQUEST message received (old format):', transformed);
+                        this.emit(WebsocketMessageType.USER_CLARIFICATION_REQUEST, transformed);
+                    }
                 }
                 break;
             }

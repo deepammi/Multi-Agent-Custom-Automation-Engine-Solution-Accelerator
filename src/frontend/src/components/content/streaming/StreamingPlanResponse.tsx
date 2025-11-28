@@ -327,8 +327,8 @@ const renderPlanResponse = (
 
             {/* Message Container */}
             <div className={styles.messageContainer}>
-                {/* Facts Section */}
-                {factsContent && (
+                {/* Analysis Status - Simple message while plan is being created */}
+                {factsContent && !planSteps.length && (
                     <div className={styles.factsSection}>
                         <div className={styles.factsHeader}>
                             <div className={styles.factsHeaderLeft}>
@@ -340,31 +340,13 @@ const renderPlanResponse = (
                                     flexShrink: 0
                                 }} />
                                 <span className={styles.factsTitle}>
-                                    Analysis
+                                    Analysis in progress...
                                 </span>
                             </div>
-                            
-                            <Button 
-                                appearance="secondary" 
-                                size="small"
-                                onClick={() => setIsFactsExpanded(!isFactsExpanded)}
-                                className={styles.factsButton}
-                            >
-                                {isFactsExpanded ? 'Hide' : 'Details'}
-                            </Button>
                         </div>
-                        
-                        {!isFactsExpanded && (
-                            <div className={styles.factsPreview}>
-                                {factsPreview}
-                            </div>
-                        )}
-                        
-                        {isFactsExpanded && (
-                            <div className={styles.factsContent}>
-                                {factsContent}
-                            </div>
-                        )}
+                        <div className={styles.factsPreview}>
+                            Analyzing your request and creating a proposed plan.
+                        </div>
                     </div>
                 )}
 

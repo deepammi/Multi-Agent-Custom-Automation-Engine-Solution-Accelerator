@@ -33,6 +33,8 @@ import ContentNotFound from "../NotFound/ContentNotFound";
 import PlanChatBody from "./PlanChatBody";
 import renderAgentMessages from "./streaming/StreamingAgentMessage";
 import StreamingBufferMessage from "./streaming/StreamingBufferMessage";
+import ClarificationUI from "./ClarificationUI";
+import PlanApprovalDisplay from "./PlanApprovalDisplay";
 
 interface SimplifiedPlanChatProps extends PlanChatProps {
   onPlanReceived?: (planData: MPlanData) => void;
@@ -48,31 +50,33 @@ interface SimplifiedPlanChatProps extends PlanChatProps {
   handleApprovePlan: () => Promise<void>;
   handleRejectPlan: () => Promise<void>;
   processingApproval: boolean;
+  clarificationMessage?: any;
 
 }
 
-const PlanChat: React.FC<SimplifiedPlanChatProps> = ({
-  planData,
-  input,
-  setInput,
-  submittingChatDisableInput,
-  OnChatSubmit,
-  onPlanApproval,
-  onPlanReceived,
-  initialTask,
-  planApprovalRequest,
-  waitingForPlan,
-  messagesContainerRef,
-  streamingMessageBuffer,
-  showBufferingText,
-  agentMessages,
-  showProcessingPlanSpinner,
-  showApprovalButtons,
-  handleApprovePlan,
-  handleRejectPlan,
-  processingApproval
-}) => {
-  // States
+const PlanChat: React.FC<SimplifiedPlanChatProps> = (props) => {
+  const {
+    planData,
+    input,
+    setInput,
+    submittingChatDisableInput,
+    OnChatSubmit,
+    onPlanApproval,
+    onPlanReceived,
+    initialTask,
+    planApprovalRequest,
+    waitingForPlan,
+    messagesContainerRef,
+    streamingMessageBuffer,
+    showBufferingText,
+    agentMessages,
+    showProcessingPlanSpinner,
+    showApprovalButtons,
+    handleApprovePlan,
+    handleRejectPlan,
+    processingApproval,
+    clarificationMessage
+  } = props || {};
 
   if (!planData)
     return (
@@ -104,9 +108,30 @@ const PlanChat: React.FC<SimplifiedPlanChatProps> = ({
         {/* AI thinking state */}
         {renderThinkingState(waitingForPlan)}
 
-        {/* Plan response with all information */}
-        {renderPlanResponse(planApprovalRequest, handleApprovePlan, handleRejectPlan, processingApproval, showApprovalButtons)}
+        {/* Plan response with approval buttons - only show when NOT in clarification phase */}
+        {/* Once plan is approved and we're in clarification, hide this to avoid confusion */}
+        {!clarificationMessage && (
+          <PlanApprovalDisplay
+            planApprovalRequest={planApprovalRequest}
+            handleApprovePlan={handleApprovePlan}
+            handleRejectPlan={handleRejectPlan}
+            processingApproval={processingApproval}
+            showApprovalButtons={showApprovalButtons}
+          />
+        )}
+
+        {/* All agent messages in chronological order */}
         {renderAgentMessages(agentMessages)}
+
+        {/* Clarification UI - shown when user needs to approve or revise */}
+        {clarificationMessage && (
+          <ClarificationUI
+            agentResult={clarificationMessage.agent_result || ''}
+            onApprove={() => OnChatSubmit('OK')}
+            onRetry={(feedback) => OnChatSubmit(feedback)}
+            isLoading={submittingChatDisableInput}
+          />
+        )}
 
         {showProcessingPlanSpinner && renderPlanExecutionMessage()}
         {/* Streaming plan updates */}

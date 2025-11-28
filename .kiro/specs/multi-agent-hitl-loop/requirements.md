@@ -33,8 +33,8 @@ This feature enables a multi-agent workflow where specialized agents (Invoice, C
 #### Acceptance Criteria
 
 1. WHEN a user provides a revision THEN the system SHALL preserve the original task description in the execution history
-2. WHEN the Planner receives a revised task THEN the system SHALL have access to the previous execution history
-3. WHEN the task loops back to the Planner THEN the system SHALL route to the appropriate specialized agent based on the revised task
+2. WHEN the specialized agent receives a revised task THEN the system SHALL have access to the previous execution history and original task context
+3. WHEN the task loops back to the specialized agent THEN the system SHALL process the revision with full context awareness
 4. WHEN multiple loops occur THEN the system SHALL maintain a complete history of all iterations
 
 ### Requirement 3

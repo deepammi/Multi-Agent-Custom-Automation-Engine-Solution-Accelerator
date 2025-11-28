@@ -23,7 +23,7 @@ export interface AgentMessage extends BaseModel {
 export interface AgentMessageData {
     agent: string;
     agent_type: AgentMessageType;
-    timestamp: number;
+    timestamp: number | string;  // Support both milliseconds (number) and ISO string
     steps: any[];
     next_steps: any[];
     content: string;
