@@ -3,6 +3,8 @@ import logging
 from typing import Dict, Any
 
 from app.agents.state import AgentState
+from app.services.llm_service import LLMService
+from app.agents.prompts import build_invoice_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +43,49 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
     }
 
 
-def invoice_agent_node(state: AgentState) -> Dict[str, Any]:
+async def invoice_agent_node(state: AgentState) -> Dict[str, Any]:
     """
     Invoice agent node - handles invoice management tasks.
-    Phase 5: Hardcoded responses for invoice operations.
+    Now supports real LLM API calls with streaming or mock mode.
     """
     task = state["task_description"]
     plan_id = state["plan_id"]
+    websocket_manager = state.get("websocket_manager")
     
     logger.info(f"Invoice Agent processing task for plan {plan_id}")
     
-    response = f"Invoice Agent here. I've processed your request:\n\n"
-    response += "✓ Verified invoice accuracy and completeness\n"
-    response += "✓ Checked payment due dates and status\n"
-    response += "✓ Reviewed vendor information\n"
-    response += "✓ Validated payment terms\n\n"
-    response += "Invoice analysis complete. All checks passed successfully."
+    # Check if mock mode is enabled
+    if LLMService.is_mock_mode():
+        logger.info("🎭 Using mock mode for Invoice Agent")
+        response = LLMService.get_mock_response("Invoice", task)
+        return {
+            "messages": [response],
+            "current_agent": "Invoice",
+            "final_result": response
+        }
+    
+    # Build prompt for LLM
+    prompt = build_invoice_prompt(task)
+    
+    # Call LLM with streaming if websocket_manager is available
+    if websocket_manager:
+        try:
+            response = await LLMService.call_llm_streaming(
+                prompt=prompt,
+                plan_id=plan_id,
+                websocket_manager=websocket_manager,
+                agent_name="Invoice"
+            )
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            response = (
+                f"I apologize, but I encountered an error while processing your request: {str(e)}\n\n"
+                f"Please try again or enable mock mode (USE_MOCK_LLM=true) for testing."
+            )
+    else:
+        # Fallback to mock if no websocket manager
+        logger.warning("No websocket_manager available, falling back to mock mode")
+        response = LLMService.get_mock_response("Invoice", task)
     
     return {
         "messages": [response],

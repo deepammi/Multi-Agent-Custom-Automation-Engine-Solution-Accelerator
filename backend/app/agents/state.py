@@ -1,5 +1,5 @@
 """Agent state definitions for LangGraph."""
-from typing import TypedDict, Annotated, Sequence, Optional
+from typing import TypedDict, Annotated, Sequence, Optional, Any
 import operator
 
 
@@ -14,3 +14,6 @@ class AgentState(TypedDict):
     final_result: str
     approval_required: bool
     approved: Optional[bool]
+    websocket_manager: Optional[Any]  # WebSocket manager for streaming
+    llm_provider: Optional[str]  # Override LLM provider
+    llm_temperature: Optional[float]  # Override temperature

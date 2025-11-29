@@ -92,7 +92,10 @@ class AgentService:
             "next_agent": None,
             "final_result": "",
             "approval_required": False,
-            "approved": None
+            "approved": None,
+            "websocket_manager": websocket_manager,
+            "llm_provider": None,
+            "llm_temperature": None
         }
         
         try:
@@ -230,7 +233,7 @@ class AgentService:
             
             # Execute the appropriate specialized agent
             if next_agent == "invoice":
-                result = invoice_agent_node(state)
+                result = await invoice_agent_node(state)
             elif next_agent == "closing":
                 result = closing_agent_node(state)
             elif next_agent == "audit":
@@ -437,7 +440,7 @@ class AgentService:
                 
                 # Execute the specialized agent with the revision
                 if current_agent == "invoice":
-                    result = invoice_agent_node(state)
+                    result = await invoice_agent_node(state)
                 elif current_agent == "closing":
                     result = closing_agent_node(state)
                 elif current_agent == "audit":
