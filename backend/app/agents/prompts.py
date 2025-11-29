@@ -1,0 +1,159 @@
+"""Prompt templates for specialized agents."""
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# Invoice Agent Prompt Template
+INVOICE_AGENT_PROMPT = """You are an expert Invoice Agent specializing in invoice management and analysis.
+
+Your expertise includes:
+- Verifying invoice accuracy and completeness
+- Checking payment due dates and status
+- Reviewing vendor information
+- Validating payment terms
+- Identifying discrepancies or issues
+
+Task: {task_description}
+
+Please analyze this invoice-related task and provide:
+1. A clear assessment of the situation
+2. Any issues or concerns identified
+3. Recommended actions or next steps
+4. Specific details about invoice accuracy, due dates, vendor info, and payment terms
+
+Provide your analysis in a clear, structured format. If the task description lacks specific invoice details, work with the information provided and note what additional information would be helpful."""
+
+
+# Closing Agent Prompt Template
+CLOSING_AGENT_PROMPT = """You are an expert Closing Agent specializing in financial closing process automation.
+
+Your expertise includes:
+- Performing account reconciliations
+- Drafting journal entries
+- Identifying GL anomalies
+- Completing variance analysis
+- Ensuring closing process accuracy
+
+Task: {task_description}
+
+Please analyze this closing-related task and provide:
+1. A clear assessment of the closing requirements
+2. Any anomalies or issues identified
+3. Recommended reconciliation steps
+4. Specific details about account balances, journal entries, and variances
+
+Provide your analysis in a clear, structured format. If the task description lacks specific closing details, work with the information provided and note what additional information would be helpful."""
+
+
+# Audit Agent Prompt Template
+AUDIT_AGENT_PROMPT = """You are an expert Audit Agent specializing in audit automation and compliance.
+
+Your expertise includes:
+- Performing continuous monitoring
+- Gathering audit evidence
+- Detecting exceptions and anomalies
+- Preparing audit responses
+- Ensuring compliance with standards
+
+Task: {task_description}
+
+Please analyze this audit-related task and provide:
+1. A clear assessment of the audit requirements
+2. Any exceptions or anomalies identified
+3. Recommended audit procedures
+4. Specific details about evidence, compliance, and findings
+
+Provide your analysis in a clear, structured format. If the task description lacks specific audit details, work with the information provided and note what additional information would be helpful."""
+
+
+def build_invoice_prompt(task_description: str) -> str:
+    """
+    Build invoice agent prompt with task details.
+    
+    Args:
+        task_description: The user's task description
+        
+    Returns:
+        str: Formatted prompt ready for LLM
+    """
+    if not task_description or not task_description.strip():
+        logger.warning("Empty task description provided to build_invoice_prompt")
+        task_description = "No specific task provided. Please provide general invoice analysis guidance."
+    
+    prompt = INVOICE_AGENT_PROMPT.format(task_description=task_description.strip())
+    logger.debug(f"Built invoice prompt (length: {len(prompt)} chars)")
+    return prompt
+
+
+def build_closing_prompt(task_description: str) -> str:
+    """
+    Build closing agent prompt with task details.
+    
+    Args:
+        task_description: The user's task description
+        
+    Returns:
+        str: Formatted prompt ready for LLM
+    """
+    if not task_description or not task_description.strip():
+        logger.warning("Empty task description provided to build_closing_prompt")
+        task_description = "No specific task provided. Please provide general closing process guidance."
+    
+    prompt = CLOSING_AGENT_PROMPT.format(task_description=task_description.strip())
+    logger.debug(f"Built closing prompt (length: {len(prompt)} chars)")
+    return prompt
+
+
+def build_audit_prompt(task_description: str) -> str:
+    """
+    Build audit agent prompt with task details.
+    
+    Args:
+        task_description: The user's task description
+        
+    Returns:
+        str: Formatted prompt ready for LLM
+    """
+    if not task_description or not task_description.strip():
+        logger.warning("Empty task description provided to build_audit_prompt")
+        task_description = "No specific task provided. Please provide general audit guidance."
+    
+    prompt = AUDIT_AGENT_PROMPT.format(task_description=task_description.strip())
+    logger.debug(f"Built audit prompt (length: {len(prompt)} chars)")
+    return prompt
+
+
+def validate_prompt_structure(prompt: str, agent_name: str) -> bool:
+    """
+    Validate that a prompt contains all required sections.
+    
+    Args:
+        prompt: The prompt to validate
+        agent_name: Name of the agent (for logging)
+        
+    Returns:
+        bool: True if prompt is valid, False otherwise
+    """
+    required_elements = [
+        ("role/expertise", "expert"),
+        ("task description", "Task:"),
+        ("output instructions", "provide"),
+        ("format guidance", "format")
+    ]
+    
+    missing_elements = []
+    for element_name, keyword in required_elements:
+        if keyword.lower() not in prompt.lower():
+            missing_elements.append(element_name)
+    
+    if missing_elements:
+        logger.error(
+            f"Prompt validation failed for {agent_name} agent. "
+            f"Missing elements: {', '.join(missing_elements)}"
+        )
+        return False
+    
+    logger.debug(f"Prompt validation passed for {agent_name} agent")
+    return True
+
