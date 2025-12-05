@@ -24,8 +24,60 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle - startup and shutdown."""
     # Startup
     logger.info("🚀 Starting MACAE LangGraph backend...")
+    
+    # Connect to MongoDB
     MongoDB.connect()
     logger.info("✅ MongoDB connected")
+    
+    # Initialize validation rules configuration
+    logger.info("📋 Loading validation rules configuration...")
+    from app.config.validation_rules import ValidationRulesConfig
+    import os
+    
+    # Load from environment variables
+    ValidationRulesConfig.load_from_env()
+    
+    # Load from config file if exists
+    config_file = os.getenv("VALIDATION_RULES_CONFIG", "validation_rules.json")
+    if os.path.exists(config_file):
+        ValidationRulesConfig.load_from_config_file(config_file)
+        logger.info(f"✅ Loaded validation rules from {config_file}")
+    
+    # Log enabled rules
+    enabled_rules = ValidationRulesConfig.get_enabled_rules()
+    logger.info(f"✅ Validation rules loaded: {len(enabled_rules)} enabled")
+    for rule in enabled_rules:
+        logger.info(f"   - {rule.name} ({rule.severity})")
+    
+    # Initialize LangExtract service if extraction is enabled
+    enable_extraction = os.getenv("ENABLE_STRUCTURED_EXTRACTION", "false").lower() == "true"
+    if enable_extraction:
+        logger.info("📊 Initializing LangExtract service...")
+        from app.services.langextract_service import LangExtractService
+        
+        try:
+            LangExtractService.initialize()
+            logger.info("✅ LangExtract service initialized")
+        except Exception as e:
+            logger.warning(f"⚠️  LangExtract initialization failed: {e}")
+            logger.warning("   Extraction features will be disabled")
+    else:
+        logger.info("📊 Structured extraction disabled (ENABLE_STRUCTURED_EXTRACTION=false)")
+    
+    # Log configuration summary
+    logger.info("\n" + "="*60)
+    logger.info("CONFIGURATION SUMMARY")
+    logger.info("="*60)
+    logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
+    logger.info(f"MongoDB: {os.getenv('MONGODB_URL', 'mongodb://localhost:27017')}")
+    logger.info(f"LLM Provider: {os.getenv('LLM_PROVIDER', 'openai')}")
+    logger.info(f"Mock LLM: {os.getenv('USE_MOCK_LLM', 'false')}")
+    logger.info(f"Structured Extraction: {enable_extraction}")
+    if enable_extraction:
+        logger.info(f"Gemini Model: {os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')}")
+        logger.info(f"Extraction Validation: {os.getenv('EXTRACTION_VALIDATION', 'true')}")
+        logger.info(f"Requires Approval: {os.getenv('EXTRACTION_REQUIRES_APPROVAL', 'true')}")
+    logger.info("="*60 + "\n")
     
     yield
     

@@ -34,7 +34,7 @@ docker run -d -p 27017:27017 mongo:latest
 
 ```bash
 cd backend
-python -m app.main
+python3 -m app.main
 ```
 
 Backend will start on http://localhost:8000
@@ -62,7 +62,7 @@ curl http://localhost:8000/health
 
 ```bash
 cd backend
-python test_e2e.py
+python3 test_e2e.py
 # All tests should pass
 ```
 

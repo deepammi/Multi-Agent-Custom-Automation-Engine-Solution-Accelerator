@@ -17,3 +17,6 @@ class AgentState(TypedDict):
     websocket_manager: Optional[Any]  # WebSocket manager for streaming
     llm_provider: Optional[str]  # Override LLM provider
     llm_temperature: Optional[float]  # Override temperature
+    extraction_result: Optional[Any]  # Stores extraction for HITL approval
+    requires_extraction_approval: Optional[bool]  # Flag for extraction approval
+    extraction_approved: Optional[bool]  # Extraction approval status

@@ -96,6 +96,15 @@ export interface TeamConfigurationBE extends BaseModel {
 /**
  * Represents a plan containing multiple steps.
  */
+export interface AgentProgress {
+    /** Agent name */
+    agent_name: string;
+    /** Current status */
+    status: string;
+    /** Timestamp of status update */
+    timestamp: string;
+}
+
 export interface Plan extends BaseModel {
     /** The type of data model */
     data_type: "plan";
@@ -119,6 +128,10 @@ export interface Plan extends BaseModel {
     human_clarification_request?: string;
     /** Human clarification response text */
     human_clarification_response?: string;
+    /** Agent progress tracking */
+    agent_progress?: AgentProgress[];
+    /** Extraction data if available */
+    extraction_data?: any;
 }
 
 export interface MStepBE {
@@ -260,6 +273,7 @@ export interface MPlanData {
     };
     // Additional fields from m_plan
     user_id?: string;
+    timestamp?: string;
     team_id?: string;
     plan_id?: string;
     overall_status?: string;

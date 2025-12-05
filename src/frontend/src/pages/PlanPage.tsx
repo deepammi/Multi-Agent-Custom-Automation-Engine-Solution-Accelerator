@@ -64,6 +64,13 @@ const PlanPage: React.FC = () => {
     // Track if task is completed to prevent spinner from showing again
     const [taskCompleted, setTaskCompleted] = useState<boolean>(false);
 
+    // Extraction approval state
+    const [extractionApprovalData, setExtractionApprovalData] = useState<any>(null);
+    const [showExtractionApproval, setShowExtractionApproval] = useState<boolean>(false);
+    const [editableInvoiceJson, setEditableInvoiceJson] = useState<string>('');
+    const [jsonError, setJsonError] = useState<string>('');
+    const [visualizationUrl, setVisualizationUrl] = useState<string | null>(null);
+
     // Plan cancellation dialog state
     const [showCancellationDialog, setShowCancellationDialog] = useState<boolean>(false);
     const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
@@ -365,6 +372,94 @@ const PlanPage: React.FC = () => {
         return () => unsubscribe();
     }, [scrollToBottom]);
 
+    // Extraction Approval Request
+    useEffect(() => {
+        const unsubscribe = webSocketService.on('extraction_approval_request', (message: any) => {
+            console.log('📊 Extraction approval request received:', message);
+            console.log('📊 Message type:', typeof message);
+            console.log('📊 Message keys:', Object.keys(message));
+            
+            if (!message) {
+                console.warn('⚠️ Extraction approval message is null/undefined');
+                return;
+            }
+            
+            // Handle different message structures
+            let extractionData = null;
+            
+            // Check if message.data.data exists (double nested)
+            if (message.data?.data) {
+                extractionData = message.data.data;
+                console.log('📊 Using message.data.data (double nested):', extractionData);
+            } else if (message.data) {
+                // Message has data property
+                extractionData = message.data;
+                console.log('📊 Using message.data:', extractionData);
+            } else if (message.type === 'extraction_approval_request') {
+                // Message is the data itself
+                extractionData = message;
+                console.log('📊 Using message directly:', extractionData);
+            }
+            
+            if (!extractionData) {
+                console.warn('⚠️ Could not extract approval data from message');
+                return;
+            }
+            
+            console.log('📊 Extraction data plan_id:', extractionData.plan_id);
+            console.log('📊 Extraction data keys:', Object.keys(extractionData));
+            console.log('📊 Extraction result:', extractionData.extraction_result);
+            console.log('📊 Invoice data:', extractionData.extraction_result?.invoice_data);
+            
+            // Hide spinner when approval is needed
+            setShowProcessingPlanSpinner(false);
+            setShowBufferingText(false);
+            
+            // Store extraction data and show approval dialog
+            setExtractionApprovalData(extractionData);
+            
+            // Set visualization URL if provided
+            if (extractionData.visualization_url) {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                setVisualizationUrl(`${apiUrl}${extractionData.visualization_url}`);
+                console.log('📊 Visualization URL set:', `${apiUrl}${extractionData.visualization_url}`);
+            } else {
+                setVisualizationUrl(null);
+            }
+            
+            // Initialize editable JSON with formatted invoice data
+            if (extractionData.extraction_result?.invoice_data) {
+                console.log('✅ Initializing JSON editor with invoice data');
+                setEditableInvoiceJson(JSON.stringify(extractionData.extraction_result.invoice_data, null, 2));
+                setJsonError('');
+            } else {
+                console.warn('⚠️ No invoice data found in extraction result - validation may have failed');
+                // Provide an empty invoice template for user to fill in
+                const emptyTemplate = {
+                    vendor_name: "",
+                    vendor_address: "",
+                    invoice_number: "",
+                    invoice_date: "",
+                    due_date: "",
+                    total_amount: "0.00",
+                    subtotal: "0.00",
+                    tax_amount: "0.00",
+                    currency: "USD",
+                    line_items: [],
+                    payment_terms: "",
+                    notes: "Extraction failed - please fill in manually"
+                };
+                setEditableInvoiceJson(JSON.stringify(emptyTemplate, null, 2));
+                setJsonError('');
+            }
+            
+            setShowExtractionApproval(true);
+            
+            scrollToBottom();
+        });
+
+        return () => unsubscribe();
+    }, [scrollToBottom]);
 
     //WebsocketMessageType.FINAL_RESULT_MESSAGE
     useEffect(() => {
@@ -631,11 +726,73 @@ const PlanPage: React.FC = () => {
                 if (planResult?.plan?.overall_status !== PlanStatus.COMPLETED) {
                     setContinueWithWebsocketFlow(true);
                 }
-                // Don't load messages from database - we'll receive them via WebSocket
-                // This prevents message ordering issues where persisted messages appear out of order
-                // if (planResult?.messages) {
-                //     setAgentMessages(planResult.messages);
-                // }
+                // Load messages from database for completed tasks (no WebSocket updates expected)
+                // For in-progress tasks, messages will come via WebSocket
+                if (planResult?.messages && planResult?.plan?.overall_status === PlanStatus.COMPLETED) {
+                    console.log('📜 Loading historical messages for completed task:', planResult.messages.length);
+                    
+                    // Map messages to ensure proper format (database uses agent_name, frontend uses agent)
+                    const mappedMessages = planResult.messages.map((msg: any) => ({
+                        ...msg,
+                        agent: msg.agent || msg.agent_name || 'System',
+                        agent_type: msg.agent_type || AgentMessageType.AI_AGENT
+                    }));
+                    
+                    setAgentMessages(mappedMessages);
+                    
+                    // If extraction data exists, add it as an Invoice Agent message
+                    if ((planResult.plan as any).extraction_data) {
+                        console.log('📊 Found extraction data in completed task');
+                        const extractionData = (planResult.plan as any).extraction_data;
+                        
+                        // Format extraction data in a user-friendly way
+                        const invoiceData = extractionData.invoice_data;
+                        let formattedContent = '📊 **Invoice Extraction Results**\n\n';
+                        
+                        if (invoiceData) {
+                            formattedContent += `**Vendor:** ${invoiceData.vendor_name || 'N/A'}\n`;
+                            formattedContent += `**Invoice Number:** ${invoiceData.invoice_number || 'N/A'}\n`;
+                            formattedContent += `**Invoice Date:** ${invoiceData.invoice_date || 'N/A'}\n`;
+                            formattedContent += `**Due Date:** ${invoiceData.due_date || 'N/A'}\n`;
+                            formattedContent += `**PO Number:** ${invoiceData.po_number || 'N/A'}\n\n`;
+                            
+                            formattedContent += `**Amounts:**\n`;
+                            formattedContent += `  • Subtotal: $${invoiceData.subtotal || '0.00'}\n`;
+                            formattedContent += `  • Tax: $${invoiceData.tax_amount || '0.00'}\n`;
+                            if (invoiceData.discount_amount) {
+                                formattedContent += `  • Discount: -$${invoiceData.discount_amount}\n`;
+                            }
+                            formattedContent += `  • **Total: $${invoiceData.total_amount || '0.00'}**\n\n`;
+                            
+                            if (invoiceData.line_items && invoiceData.line_items.length > 0) {
+                                formattedContent += `**Line Items:**\n`;
+                                invoiceData.line_items.forEach((item: any, index: number) => {
+                                    formattedContent += `${index + 1}. ${item.description || 'N/A'}\n`;
+                                    formattedContent += `   Qty: ${item.quantity || 0} × $${item.unit_price || '0.00'} = $${item.total || '0.00'}\n`;
+                                });
+                            }
+                            
+                            if (extractionData.validation_errors && extractionData.validation_errors.length > 0) {
+                                formattedContent += `\n**Validation Notes:**\n`;
+                                extractionData.validation_errors.forEach((error: any) => {
+                                    formattedContent += `⚠️ ${error.message || error}\n`;
+                                });
+                            }
+                        }
+                        
+                        const extractionMessage: AgentMessageData = {
+                            agent: 'Invoice',
+                            agent_type: AgentMessageType.AI_AGENT,
+                            content: formattedContent,
+                            timestamp: planResult.plan.timestamp || new Date().toISOString(),
+                            steps: [],
+                            next_steps: [],
+                            raw_data: ''
+                        };
+                        
+                        setAgentMessages(prev => [...prev, extractionMessage]);
+                    }
+                }
                 if (planResult?.mplan) {
                     setPlanApprovalRequest(planResult.mplan);
                 }
@@ -724,6 +881,89 @@ const PlanPage: React.FC = () => {
             setProcessingApproval(false);
         }
     }, [planApprovalRequest, planData, navigate, setProcessingApproval]);
+
+    // Handle extraction approval
+    const handleExtractionApproval = useCallback(async (approved: boolean) => {
+        if (!extractionApprovalData) {
+            console.error('❌ No extraction approval data available');
+            return;
+        }
+
+        console.log(`📊 Extraction approval: ${approved}`);
+        
+        // If approved, validate and parse the edited JSON
+        let editedInvoiceData = null;
+        if (approved) {
+            try {
+                editedInvoiceData = JSON.parse(editableInvoiceJson);
+                console.log('✅ Parsed edited invoice data:', editedInvoiceData);
+                setJsonError('');
+            } catch (error) {
+                console.error('❌ Invalid JSON:', error);
+                setJsonError('Invalid JSON format. Please fix the errors before approving.');
+                showToast('Invalid JSON format. Please fix the errors.', 'error');
+                return;
+            }
+        }
+        
+        // Use planId from URL params as fallback
+        const targetPlanId = extractionApprovalData.plan_id || planId;
+        
+        if (!targetPlanId) {
+            console.error('❌ No plan_id available for extraction approval');
+            showToast('Error: No plan ID available', 'error');
+            return;
+        }
+        
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const endpoint = `${apiUrl}/api/v3/extraction_approval`;
+            
+            console.log(`📊 Sending extraction approval to: ${endpoint}`);
+            
+            const requestBody = {
+                plan_id: targetPlanId,
+                approved: approved,
+                feedback: approved ? '' : 'User rejected extraction',
+                edited_data: approved ? editedInvoiceData : null
+            };
+            
+            console.log(`📊 Request body:`, requestBody);
+            
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody)
+            });
+            
+            console.log(`📊 Response status: ${response.status}`);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`❌ Response error: ${errorText}`);
+                throw new Error(`Failed to send extraction approval: ${response.status} ${errorText}`);
+            }
+            
+            const responseData = await response.json();
+            console.log('✅ Extraction approval sent successfully:', responseData);
+            
+            // Close dialog
+            setShowExtractionApproval(false);
+            setExtractionApprovalData(null);
+            setEditableInvoiceJson('');
+            setJsonError('');
+            
+            // Show spinner while waiting for completion (only if approved)
+            if (approved) {
+                setShowProcessingPlanSpinner(true);
+            }
+            
+        } catch (error) {
+            console.error('❌ Failed to send extraction approval:', error);
+            showToast(`Failed to send approval: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+        }
+    }, [extractionApprovalData, showToast, planId, editableInvoiceJson]);
+
     // Chat submission handler - updated for v3 backend compatibility
 
     const handleOnchatSubmit = useCallback(
@@ -887,12 +1127,62 @@ const PlanPage: React.FC = () => {
                     ) : (
                         <>
                             <ContentToolbar
-                                panelTitle="Multi-Agent Planner"
+                                panelTitle="Nolij Invoice Management Team"
                             >
                                 {/* <PanelRightToggles>
                                     <TaskListSquareLtr />
                                 </PanelRightToggles> */}
                             </ContentToolbar>
+
+                            {/* Expert Agents Row */}
+                            <div style={{
+                                display: 'flex',
+                                gap: '12px',
+                                padding: '12px 24px',
+                                backgroundColor: 'var(--colorNeutralBackground2)',
+                                borderBottom: '1px solid var(--colorNeutralStroke2)'
+                            }}>
+                                <div style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '16px',
+                                    backgroundColor: '#E3F2FD',
+                                    color: '#1976D2',
+                                    fontSize: '13px',
+                                    fontWeight: '600'
+                                }}>
+                                    Planning Expert
+                                </div>
+                                <div style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '16px',
+                                    backgroundColor: '#E8F5E9',
+                                    color: '#388E3C',
+                                    fontSize: '13px',
+                                    fontWeight: '600'
+                                }}>
+                                    Invoice Expert
+                                </div>
+                                <div style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '16px',
+                                    backgroundColor: '#FFF3E0',
+                                    color: '#F57C00',
+                                    fontSize: '13px',
+                                    fontWeight: '600'
+                                }}>
+                                    Human Expert
+                                </div>
+                                <div style={{
+                                    padding: '6px 16px',
+                                    borderRadius: '16px',
+                                    backgroundColor: '#F3E5F5',
+                                    color: '#7B1FA2',
+                                    fontSize: '13px',
+                                    fontWeight: '600'
+                                }}>
+                                    Invoice Processor
+                                </div>
+                            </div>
 
                             <PlanChat
                                 planData={planData}
@@ -926,6 +1216,7 @@ const PlanPage: React.FC = () => {
                     planData={planData}
                     loading={loading}
                     planApprovalRequest={planApprovalRequest}
+                    agentMessages={agentMessages}
                 />
             </CoralShellRow>
 
@@ -936,6 +1227,93 @@ const PlanPage: React.FC = () => {
                 onCancel={handleCancelDialog}
                 loading={cancellingPlan}
             />
+
+            {/* Extraction Approval Dialog */}
+            {showExtractionApproval && extractionApprovalData && (
+                <div className="extraction-approval-dialog">
+                    <div className="dialog-overlay" onClick={(e) => e.stopPropagation()} />
+                    <div className="dialog-content">
+                        <h2>📊 Invoice Extraction Approval</h2>
+                        
+                        <div className="extraction-summary">
+                            <p className="extraction-instructions">
+                                Review and edit the extracted invoice data below. You can modify any field before approving.
+                            </p>
+                            
+                            {extractionApprovalData.extraction_result?.validation_errors?.length > 0 && (
+                                <div className="validation-errors">
+                                    <h4>⚠️ Validation Issues:</h4>
+                                    <ul>
+                                        {extractionApprovalData.extraction_result.validation_errors.map((error: string, idx: number) => (
+                                            <li key={idx}>{error}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            
+                            <div className="extraction-content-layout">
+                                {visualizationUrl && (
+                                    <div className="visualization-container">
+                                        <h3>📊 Extraction Visualization:</h3>
+                                        <iframe
+                                            src={visualizationUrl}
+                                            className="extraction-visualization-iframe"
+                                            title="Invoice Extraction Visualization"
+                                            sandbox="allow-same-origin allow-scripts"
+                                        />
+                                    </div>
+                                )}
+                                
+                                <div className="json-editor-container">
+                                    <h3>Invoice Data (Editable JSON):</h3>
+                                    <textarea
+                                        className={`json-editor ${jsonError ? 'json-error' : ''}`}
+                                        value={editableInvoiceJson}
+                                        onChange={(e) => {
+                                            setEditableInvoiceJson(e.target.value);
+                                            // Try to parse to validate
+                                            try {
+                                                JSON.parse(e.target.value);
+                                                setJsonError('');
+                                            } catch (error) {
+                                                setJsonError('Invalid JSON format');
+                                            }
+                                        }}
+                                        spellCheck={false}
+                                        rows={20}
+                                    />
+                                    {jsonError && (
+                                        <div className="json-error-message">
+                                            ❌ {jsonError}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="extraction-metadata">
+                                <p><small>Model: Nolij AI Accounting Model</small></p>
+                                <p><small>Extraction Time: {extractionApprovalData.extraction_result?.extraction_time?.toFixed(2)}s</small></p>
+                            </div>
+                        </div>
+                        
+                        <div className="dialog-actions">
+                            <button 
+                                className="btn-approve"
+                                onClick={() => handleExtractionApproval(true)}
+                                disabled={!!jsonError}
+                            >
+                                ✅ Approve & Store
+                            </button>
+                            <button 
+                                className="btn-reject"
+                                onClick={() => handleExtractionApproval(false)}
+                            >
+                                ❌ Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </CoralShellColumn>
     );
 };

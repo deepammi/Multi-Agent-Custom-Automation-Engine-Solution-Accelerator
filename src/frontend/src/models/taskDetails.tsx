@@ -1,4 +1,5 @@
 import { MPlanData, ProcessedPlanData } from "./plan";
+import { AgentMessageData } from "./agentMessage";
 
 export interface SubTask {
     id: string;
@@ -24,4 +25,5 @@ export interface PlanDetailsProps {
     planData: ProcessedPlanData;
     loading: boolean;
     planApprovalRequest: MPlanData | null;
+    agentMessages?: AgentMessageData[];
 }

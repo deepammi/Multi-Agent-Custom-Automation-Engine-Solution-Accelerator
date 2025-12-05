@@ -1,10 +1,80 @@
 """Agent node implementations."""
 import logging
+import os
 from typing import Dict, Any
 
 from app.agents.state import AgentState
 from app.services.llm_service import LLMService
 from app.agents.prompts import build_invoice_prompt
+
+logger = logging.getLogger(__name__)
+
+
+def detect_invoice_text(text: str) -> bool:
+    """
+    Detect if text contains invoice data suitable for structured extraction.
+    
+    Args:
+        text: Text to analyze
+        
+    Returns:
+        bool: True if text appears to be an invoice document
+    """
+    text_lower = text.lower()
+    
+    # Check for invoice indicators
+    invoice_keywords = [
+        "invoice",
+        "bill to",
+        "invoice number",
+        "invoice #",
+        "due date",
+        "payment terms",
+        "subtotal",
+        "total amount",
+        "line item"
+    ]
+    
+    # Check for structured data indicators
+    structure_indicators = [
+        "qty",
+        "quantity",
+        "unit price",
+        "description",
+        "amount due"
+    ]
+    
+    # Count matches
+    keyword_matches = sum(1 for keyword in invoice_keywords if keyword in text_lower)
+    structure_matches = sum(1 for indicator in structure_indicators if indicator in text_lower)
+    
+    # Check for currency symbols
+    has_currency = any(symbol in text for symbol in ['$', '€', '£', '¥', 'USD', 'EUR', 'GBP'])
+    
+    # Check for date patterns (YYYY-MM-DD, MM/DD/YYYY, Month DD, YYYY, etc.)
+    import re
+    date_patterns = [
+        r'\d{4}[-/]\d{1,2}[-/]\d{1,2}',  # 2025-03-20 or 2025/03/20
+        r'\d{1,2}[-/]\d{1,2}[-/]\d{4}',  # 03/20/2025 or 03-20-2025
+        r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}',  # March 20, 2025
+        r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}',  # 20 Mar 2025
+    ]
+    has_dates = any(re.search(pattern, text, re.IGNORECASE) for pattern in date_patterns)
+    
+    # Decision logic - RELAXED for better detection
+    is_invoice = (
+        keyword_matches >= 2 and  # At least 2 invoice keywords
+        (structure_matches >= 1 or has_currency)  # Some structure or currency
+        # Removed has_dates requirement - dates are nice to have but not required
+    )
+    
+    logger.info(
+        f"Invoice detection: {is_invoice} "
+        f"(keywords={keyword_matches}, structure={structure_matches}, "
+        f"currency={has_currency}, dates={has_dates})"
+    )
+    
+    return is_invoice
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +92,24 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
     # Analyze task and determine which agent to route to
     task_lower = task.lower()
     
+    # Create brief task summary (first 100 chars or first line)
+    task_summary = task.split('\n')[0][:100]
+    if len(task) > 100:
+        task_summary += "..."
+    
     if any(word in task_lower for word in ["invoice", "payment", "bill", "vendor"]):
         next_agent = "invoice"
-        response = f"I've analyzed your task: '{task}'.\n\nThis appears to be an invoice-related task. Routing to Invoice Agent for specialized handling."
+        response = "I've analyzed your task: This appears to be an invoice processing task. Routing to Invoice Agent."
     elif any(word in task_lower for word in ["closing", "reconciliation", "journal", "variance", "gl"]):
         next_agent = "closing"
-        response = f"I've analyzed your task: '{task}'.\n\nThis appears to be a closing process task. Routing to Closing Agent for specialized handling."
+        response = "I've analyzed your task: This appears to be a closing process task. Routing to Closing Agent."
     elif any(word in task_lower for word in ["audit", "compliance", "evidence", "exception", "monitoring"]):
         next_agent = "audit"
-        response = f"I've analyzed your task: '{task}'.\n\nThis appears to be an audit-related task. Routing to Audit Agent for specialized handling."
+        response = "I've analyzed your task: This appears to be an audit-related task. Routing to Audit Agent."
     else:
         # Default to invoice agent
         next_agent = "invoice"
-        response = f"I've analyzed your task: '{task}'.\n\nRouting to Invoice Agent for processing."
+        response = "I've analyzed your task. Routing to Invoice Agent for processing."
     
     return {
         "messages": [response],
@@ -45,14 +120,106 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
 
 async def invoice_agent_node(state: AgentState) -> Dict[str, Any]:
     """
-    Invoice agent node - handles invoice management tasks.
-    Now supports real LLM API calls with streaming or mock mode.
+    Invoice agent node - handles invoice management with structured extraction.
+    Supports both structured extraction and text analysis.
     """
     task = state["task_description"]
     plan_id = state["plan_id"]
     websocket_manager = state.get("websocket_manager")
     
     logger.info(f"Invoice Agent processing task for plan {plan_id}")
+    
+    # Check if structured extraction is enabled
+    enable_extraction = os.getenv("ENABLE_STRUCTURED_EXTRACTION", "false").lower() == "true"
+    
+    # Detect if task contains invoice text for extraction
+    needs_extraction = enable_extraction and detect_invoice_text(task)
+    
+    if needs_extraction:
+        logger.info(f"📊 Invoice text detected - attempting structured extraction")
+        
+        try:
+            # Import here to avoid errors if not installed
+            from app.services.langextract_service import LangExtractService
+            from datetime import datetime
+            import asyncio
+            
+            # Send initial processing message via WebSocket
+            if websocket_manager:
+                logger.info(f"📊 [Invoice Agent] Sending processing message for plan {plan_id}")
+                await websocket_manager.send_message(plan_id, {
+                    "type": "agent_message",
+                    "data": {
+                        "agent_name": "Invoice",
+                        "content": "📊 Processing invoice extraction...",
+                        "status": "in_progress",
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    }
+                })
+                # Small delay to ensure message is sent before extraction starts
+                await asyncio.sleep(0.1)
+            
+            # Extract structured data
+            logger.info(f"📊 [Invoice Agent] Starting extraction for plan {plan_id}")
+            extraction_start = datetime.utcnow()
+            
+            extraction_result = await LangExtractService.extract_invoice_data(
+                invoice_text=task,
+                plan_id=plan_id
+            )
+            
+            extraction_elapsed = (datetime.utcnow() - extraction_start).total_seconds()
+            logger.info(f"📊 [Invoice Agent] Extraction completed in {extraction_elapsed:.2f}s for plan {plan_id}")
+            
+            # Format extraction result for display
+            structured_response = LangExtractService.format_extraction_result(extraction_result)
+            
+            # Send completion message via WebSocket
+            if websocket_manager:
+                logger.info(f"📊 [Invoice Agent] Sending completion message for plan {plan_id}")
+                await websocket_manager.send_message(plan_id, {
+                    "type": "agent_message",
+                    "data": {
+                        "agent_name": "Invoice",
+                        "content": "✅ Invoice extraction complete. Awaiting approval...",
+                        "status": "in_progress",
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    }
+                })
+                # Small delay to ensure message is sent before returning
+                await asyncio.sleep(0.1)
+            
+            # Store extraction result in state for HITL approval
+            # DO NOT store to database yet - wait for human approval
+            return {
+                "messages": [structured_response],
+                "current_agent": "Invoice",
+                "final_result": structured_response,
+                "extraction_result": extraction_result,
+                "requires_extraction_approval": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Extraction failed, falling back to text analysis: {e}")
+            # Send error message via WebSocket if available
+            if websocket_manager:
+                try:
+                    from datetime import datetime
+                    await websocket_manager.send_message(plan_id, {
+                        "type": "agent_message",
+                        "data": {
+                            "agent_name": "Invoice",
+                            "content": f"⚠️ Extraction failed: {str(e)}. Falling back to text analysis...",
+                            "status": "warning",
+                            "timestamp": datetime.utcnow().isoformat() + "Z"
+                        }
+                    })
+                except Exception as ws_error:
+                    logger.error(f"Failed to send error message via WebSocket: {ws_error}")
+            # Fall through to regular text analysis
+    
+    # Regular text analysis (existing behavior)
+    logger.info(f"Using text analysis mode for Invoice Agent")
     
     # Check if mock mode is enabled
     if LLMService.is_mock_mode():

@@ -465,3 +465,8 @@ data/sample_code/
 # Bicep local files
 *.local*.bicepparam
 *.local*.parameters.json
+
+# Archive folders for test scripts and intermediate files
+.archive/
+backend/.archive/
+*/.archive/

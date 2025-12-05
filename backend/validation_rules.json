@@ -1,0 +1,52 @@
+{
+  "date_ordering": {
+    "enabled": true,
+    "severity": "error",
+    "description": "Verify that due date is after invoice date"
+  },
+  "total_calculation": {
+    "enabled": true,
+    "severity": "error",
+    "description": "Verify that total = subtotal + tax"
+  },
+  "line_items_sum": {
+    "enabled": true,
+    "severity": "warning",
+    "description": "Verify that line items sum to subtotal"
+  },
+  "positive_amounts": {
+    "enabled": true,
+    "severity": "error",
+    "description": "Verify all amounts are positive"
+  },
+  "required_fields": {
+    "enabled": true,
+    "severity": "error",
+    "description": "Verify all required fields are present"
+  },
+  "invoice_number_format": {
+    "enabled": false,
+    "severity": "warning",
+    "description": "Verify invoice number follows expected format (e.g., INV-12345)"
+  },
+  "vendor_name_length": {
+    "enabled": false,
+    "severity": "info",
+    "description": "Verify vendor name is reasonable length (2-100 chars)"
+  },
+  "future_date_check": {
+    "enabled": true,
+    "severity": "warning",
+    "description": "Warn if invoice date is in the future"
+  },
+  "duplicate_line_items": {
+    "enabled": false,
+    "severity": "info",
+    "description": "Check for duplicate line item descriptions"
+  },
+  "tax_rate_reasonableness": {
+    "enabled": true,
+    "severity": "warning",
+    "description": "Verify tax rate is within reasonable range (0-30%)"
+  }
+}
