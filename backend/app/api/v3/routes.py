@@ -153,6 +153,37 @@ async def user_clarification(request: dict, background_tasks: BackgroundTasks):
     }
 
 
+@router.post("/extraction_approval")
+async def extraction_approval(request: dict, background_tasks: BackgroundTasks):
+    """
+    Handle invoice extraction approval/rejection.
+    Phase 4: Processes extraction approval and continues or stops workflow.
+    """
+    logger.info(f"Extraction approval received for plan {request.get('plan_id')}: approved={request.get('approved')}")
+    
+    plan_id = request.get("plan_id")
+    approved = request.get("approved", False)
+    feedback = request.get("feedback", "")
+    edited_data = request.get("edited_data")
+    
+    if not plan_id:
+        raise HTTPException(status_code=400, detail="plan_id is required")
+    
+    # Process extraction approval in background
+    background_tasks.add_task(
+        AgentService.handle_extraction_approval,
+        plan_id,
+        approved,
+        feedback,
+        edited_data
+    )
+    
+    return {
+        "status": "processing",
+        "message": "Extraction approval received"
+    }
+
+
 @router.post("/agent_message")
 async def agent_message(request: dict):
     """
@@ -175,10 +206,60 @@ async def agent_message(request: dict):
 async def get_teams():
     """
     Get available team configurations.
-    Phase 8: Will return actual team configurations.
+    Phase 8: Returns team configurations from database.
     """
     logger.info("Getting teams")
-    return []
+    
+    from app.db.mongodb import MongoDB
+    
+    db = MongoDB.get_database()
+    teams_collection = db["teams"]
+    
+    teams = []
+    async for team_doc in teams_collection.find():
+        # Remove MongoDB _id field
+        team_doc.pop('_id', None)
+        teams.append(team_doc)
+    
+    return teams
+
+
+@router.post("/teams/upload")
+async def upload_teams(teams_data: dict):
+    """
+    Upload team configurations from JSON file.
+    Stores multiple team configurations to database.
+    """
+    logger.info("Uploading team configurations")
+    
+    from app.db.mongodb import MongoDB
+    
+    try:
+        teams_list = teams_data.get("teams", [])
+        
+        if not teams_list:
+            raise HTTPException(status_code=400, detail="No teams found in upload data")
+        
+        db = MongoDB.get_database()
+        teams_collection = db["teams"]
+        
+        # Clear existing teams and insert new ones
+        await teams_collection.delete_many({})
+        
+        if teams_list:
+            await teams_collection.insert_many(teams_list)
+        
+        logger.info(f"Uploaded {len(teams_list)} team configurations")
+        
+        return {
+            "status": "success",
+            "message": f"Uploaded {len(teams_list)} teams",
+            "teams": teams_list
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to upload teams: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload teams: {str(e)}")
 
 
 @router.get("/init_team")
@@ -192,3 +273,98 @@ async def init_team(team_switched: bool = Query(False)):
         "status": "initialized",
         "team_id": str(uuid.uuid4())
     }
+
+
+@router.get("/extraction/{plan_id}/json")
+async def get_extraction_json(plan_id: str):
+    """
+    Get invoice extraction as JSON.
+    Phase 5: Returns structured extraction data.
+    """
+    logger.info(f"Getting extraction JSON for plan {plan_id}")
+    
+    from app.db.repositories import InvoiceExtractionRepository
+    
+    extraction = await InvoiceExtractionRepository.get_extraction(plan_id)
+    
+    if not extraction:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+    
+    return InvoiceExtractionRepository.export_extraction_json(extraction)
+
+
+@router.get("/extraction/{plan_id}/csv")
+async def get_extraction_csv(plan_id: str):
+    """
+    Get invoice extraction as CSV.
+    Phase 5: Returns CSV formatted extraction data.
+    """
+    logger.info(f"Getting extraction CSV for plan {plan_id}")
+    
+    from fastapi.responses import Response
+    from app.db.repositories import InvoiceExtractionRepository
+    
+    extraction = await InvoiceExtractionRepository.get_extraction(plan_id)
+    
+    if not extraction:
+        raise HTTPException(status_code=404, detail="Extraction not found")
+    
+    csv_content = InvoiceExtractionRepository.export_extraction_csv(extraction)
+    
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=invoice_{plan_id}.csv"
+        }
+    )
+
+
+@router.get("/extractions")
+async def get_all_extractions(limit: int = Query(100, le=1000)):
+    """
+    Get all invoice extractions.
+    Phase 5: Returns list of all extractions.
+    """
+    logger.info(f"Getting all extractions (limit={limit})")
+    
+    from app.db.repositories import InvoiceExtractionRepository
+    
+    extractions = await InvoiceExtractionRepository.get_all_extractions(limit=limit)
+    
+    return {
+        "extractions": extractions,
+        "count": len(extractions)
+    }
+
+
+@router.get("/extraction/{plan_id}/visualize")
+async def get_extraction_visualization(plan_id: str):
+    """
+    Get HTML visualization of extraction using langextract.
+    Returns HTML content that can be displayed in an iframe.
+    """
+    logger.info(f"Getting visualization for plan {plan_id}")
+    
+    from fastapi.responses import HTMLResponse
+    from app.services.langextract_service import LangExtractService
+    
+    # Try to get cached visualization first
+    html_content = LangExtractService.get_visualization(plan_id)
+    
+    if not html_content:
+        # If not cached, try to generate from database
+        from app.db.repositories import InvoiceExtractionRepository
+        
+        extraction = await InvoiceExtractionRepository.get_extraction(plan_id)
+        
+        if not extraction:
+            raise HTTPException(status_code=404, detail="Extraction not found")
+        
+        # Generate visualization
+        html_content = LangExtractService.visualize_extraction(extraction, plan_id)
+        
+        if not html_content:
+            raise HTTPException(status_code=500, detail="Failed to generate visualization")
+    
+    return HTMLResponse(content=html_content)

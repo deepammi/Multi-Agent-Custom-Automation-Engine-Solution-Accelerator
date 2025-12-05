@@ -117,24 +117,13 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
     setError(null);
 
     try {
-      // If this team was just uploaded, skip the selection API call and go directly to homepage
-      if (uploadedTeam && uploadedTeam.team_id === tempSelectedTeam.team_id) {
-        console.log('Uploaded team selected, going directly to homepage:', tempSelectedTeam.name);
-        onTeamSelect?.(tempSelectedTeam);
-        setIsOpen(false);
-        return; // Skip the selectTeam API call
-      }
-
-      // For existing teams, do the normal selection process
-      const result = await TeamService.selectTeam(tempSelectedTeam.team_id);
-
-      if (result.success) {
-        console.log('Team selected:', result.data);
-        onTeamSelect?.(tempSelectedTeam);
-        setIsOpen(false);
-      } else {
-        setError(result.error || 'Failed to select team');
-      }
+      // Store the selected team in localStorage
+      TeamService.storageTeam(tempSelectedTeam);
+      console.log('Team selected and stored:', tempSelectedTeam.name);
+      
+      // Notify parent component
+      onTeamSelect?.(tempSelectedTeam);
+      setIsOpen(false);
     } catch (err: any) {
       console.error('Error selecting team:', err);
       setError('Failed to select team. Please try again.');
@@ -272,13 +261,20 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
       if (result.success) {
         setUploadMessage(null);
 
-        if (result.team) {
+        if (result.teams && result.teams.length > 0) {
+          // Get the first uploaded team
+          const firstTeam = result.teams[0];
+          
           // Set success message with team name
-          setUploadSuccessMessage(`${result.team.name} was uploaded`);
+          setUploadSuccessMessage(`${firstTeam.name} was uploaded`);
 
-          setTeams(currentTeams => [result.team!, ...currentTeams]);
-          setUploadedTeam(result.team);
-          setTempSelectedTeam(result.team);
+          // Reload teams from backend to get the uploaded teams
+          await loadTeams();
+          
+          // Find the uploaded team in the loaded teams
+          const uploadedTeamFromList = teams.find(t => t.team_id === firstTeam.team_id) || firstTeam;
+          setUploadedTeam(uploadedTeamFromList);
+          setTempSelectedTeam(uploadedTeamFromList);
 
           setTimeout(() => {
             setUploadSuccessMessage(null);
@@ -373,13 +369,20 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
       if (result.success) {
         setUploadMessage(null);
 
-        if (result.team) {
+        if (result.teams && result.teams.length > 0) {
+          // Get the first uploaded team
+          const firstTeam = result.teams[0];
+          
           // Set success message with team name
-          setUploadSuccessMessage(`${result.team.name} was uploaded and selected`);
+          setUploadSuccessMessage(`${firstTeam.name} was uploaded and selected`);
 
-          setTeams(currentTeams => [result.team!, ...currentTeams]);
-          setUploadedTeam(result.team);
-          setTempSelectedTeam(result.team);
+          // Reload teams from backend to get the uploaded teams
+          await loadTeams();
+          
+          // Find the uploaded team in the loaded teams
+          const uploadedTeamFromList = teams.find(t => t.team_id === firstTeam.team_id) || firstTeam;
+          setUploadedTeam(uploadedTeamFromList);
+          setTempSelectedTeam(uploadedTeamFromList);
 
           // Clear success message after 15 seconds if user doesn't act
           setTimeout(() => {

@@ -1,0 +1,139 @@
+{
+  "teams": [
+    {
+      "team_id": "invoice-processing-team",
+      "name": "Invoice Processing Team",
+      "description": "Specialized team for invoice extraction, validation, and processing",
+      "agents": [
+        {
+          "name": "Planner",
+          "role": "Planning Expert",
+          "instructions": "Analyze incoming requests and route to appropriate specialized agents. Determine the best workflow for invoice processing tasks."
+        },
+        {
+          "name": "Invoice",
+          "role": "Invoice Expert",
+          "instructions": "Extract structured data from invoices including vendor information, line items, amounts, and dates. Validate extracted data against business rules."
+        },
+        {
+          "name": "HITL",
+          "role": "Human Expert",
+          "instructions": "Request human approval for extracted invoice data. Handle user feedback and revisions. Ensure quality control through human oversight."
+        },
+        {
+          "name": "System",
+          "role": "Invoice Processor",
+          "instructions": "Store approved invoices to the database. Generate confirmation messages. Handle post-processing tasks and notifications."
+        }
+      ]
+    },
+    {
+      "team_id": "closing-team",
+      "name": "Month-End Closing Team",
+      "description": "Team specialized in month-end closing processes and reconciliations",
+      "agents": [
+        {
+          "name": "Planner",
+          "role": "Planning Expert",
+          "instructions": "Coordinate month-end closing activities and route tasks to appropriate agents."
+        },
+        {
+          "name": "Closing",
+          "role": "Closing Expert",
+          "instructions": "Perform account reconciliations, draft journal entries, identify GL anomalies, and complete variance analysis."
+        },
+        {
+          "name": "HITL",
+          "role": "Human Expert",
+          "instructions": "Review and approve closing entries. Validate reconciliations and provide feedback on anomalies."
+        },
+        {
+          "name": "System",
+          "role": "Closing Processor",
+          "instructions": "Store approved closing entries. Generate closing reports and notifications."
+        }
+      ]
+    },
+    {
+      "team_id": "audit-team",
+      "name": "Audit & Compliance Team",
+      "description": "Team focused on audit automation and compliance monitoring",
+      "agents": [
+        {
+          "name": "Planner",
+          "role": "Planning Expert",
+          "instructions": "Analyze audit requests and coordinate audit activities across specialized agents."
+        },
+        {
+          "name": "Audit",
+          "role": "Audit Expert",
+          "instructions": "Perform continuous monitoring, gather audit evidence, detect exceptions and anomalies, and prepare audit responses."
+        },
+        {
+          "name": "HITL",
+          "role": "Human Expert",
+          "instructions": "Review audit findings and approve audit responses. Validate exception handling and provide guidance."
+        },
+        {
+          "name": "System",
+          "role": "Audit Processor",
+          "instructions": "Store audit findings and generate compliance reports. Send notifications for critical issues."
+        }
+      ]
+    },
+    {
+      "team_id": "contract-team",
+      "name": "Contract Accounting Team",
+      "description": "Team specialized in contract analysis and revenue recognition",
+      "agents": [
+        {
+          "name": "Planner",
+          "role": "Planning Expert",
+          "instructions": "Route contract-related tasks to appropriate specialists."
+        },
+        {
+          "name": "Contract",
+          "role": "Contract Expert",
+          "instructions": "Generate contract summaries, create accounting memos, prepare revenue schedules, and validate ERP entries."
+        },
+        {
+          "name": "HITL",
+          "role": "Human Expert",
+          "instructions": "Review and approve contract accounting treatments. Validate revenue recognition schedules."
+        },
+        {
+          "name": "System",
+          "role": "Contract Processor",
+          "instructions": "Store approved contract data and generate revenue reports."
+        }
+      ]
+    },
+    {
+      "team_id": "procurement-team",
+      "name": "Procurement Management Team",
+      "description": "Team focused on procurement analysis and spend management",
+      "agents": [
+        {
+          "name": "Planner",
+          "role": "Planning Expert",
+          "instructions": "Coordinate procurement-related tasks and route to specialized agents."
+        },
+        {
+          "name": "Procurement",
+          "role": "Procurement Expert",
+          "instructions": "Classify spend categories, detect duplicate or suspicious invoices, perform risk analysis, and generate contract summaries."
+        },
+        {
+          "name": "HITL",
+          "role": "Human Expert",
+          "instructions": "Review procurement findings and approve risk assessments. Validate spend classifications."
+        },
+        {
+          "name": "System",
+          "role": "Procurement Processor",
+          "instructions": "Store procurement data and generate spend analysis reports."
+        }
+      ]
+    }
+  ]
+}

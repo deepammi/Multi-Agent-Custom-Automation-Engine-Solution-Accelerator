@@ -76,17 +76,21 @@ export class TeamService {
     }
 
     static async uploadCustomTeam(teamFile: File): Promise<{
-        modelError?: any; success: boolean; team?: TeamConfig; error?: string; raiError?: any; searchError?: any
+        modelError?: any; success: boolean; teams?: TeamConfig[]; error?: string; raiError?: any; searchError?: any
     }> {
         try {
-            const formData = new FormData();
-            formData.append('file', teamFile);
-            console.log(formData);
-            const response = await apiClient.upload('/v3/upload_team_config', formData);
+            // Read the file content as text
+            const fileContent = await teamFile.text();
+            
+            // Parse the JSON
+            const teamsData = JSON.parse(fileContent);
+            
+            // Send to backend as JSON (not FormData)
+            const response = await apiClient.post('/v3/teams/upload', teamsData);
 
             return {
                 success: true,
-                team: response.team
+                teams: response.teams
             };
         } catch (error: any) {
 
@@ -135,7 +139,7 @@ export class TeamService {
      */
     static async getUserTeams(): Promise<TeamConfig[]> {
         try {
-            const response = await apiClient.get('/v3/team_configs');
+            const response = await apiClient.get('/v3/teams');
 
             // The apiClient returns the response data directly, not wrapped in a data property
             const teams = Array.isArray(response) ? response : [];

@@ -13,6 +13,13 @@ class Step(BaseModel):
     result: Optional[str] = None
 
 
+class AgentProgress(BaseModel):
+    """Agent progress tracking."""
+    agent_name: str
+    status: str  # e.g., "planning completed", "waiting for input", "processing", "completed"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
 class Plan(BaseModel):
     """Plan model."""
     id: str = Field(alias="plan_id")
@@ -21,6 +28,8 @@ class Plan(BaseModel):
     description: str
     status: str = "pending"
     steps: List[Step] = []
+    agent_progress: List[AgentProgress] = []  # Track progress of each agent
+    extraction_data: Optional[dict] = None  # Store extraction result if available
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     
@@ -42,6 +51,8 @@ class PlanResponse(BaseModel):
     status: str
     overall_status: str
     steps: List[Step]
+    agent_progress: List[AgentProgress] = []  # Latest status from each agent
+    extraction_data: Optional[dict] = None  # Extraction result if available
     created_at: str
     updated_at: str
     timestamp: str
@@ -63,6 +74,8 @@ class PlanResponse(BaseModel):
             status=plan.status,
             overall_status=plan.status,
             steps=plan.steps,
+            agent_progress=plan.agent_progress,
+            extraction_data=plan.extraction_data,
             created_at=created_at_str,
             updated_at=updated_at_str,
             timestamp=created_at_str,

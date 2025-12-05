@@ -262,8 +262,8 @@ export const getAgentIcon = (
 
         const agent = storedTeam.agents.find(a =>
             TaskService.cleanTextToSpaces(a.name).toLowerCase().includes(cleanAgentName.toLowerCase()) ||
-            a.type.toLowerCase().includes(cleanAgentName.toLowerCase()) ||
-            a.input_key.toLowerCase().includes(cleanAgentName.toLowerCase())
+            (a.type && a.type.toLowerCase().includes(cleanAgentName.toLowerCase())) ||
+            (a.input_key && a.input_key.toLowerCase().includes(cleanAgentName.toLowerCase()))
         );
 
         if (agent?.icon && iconMap[agent.icon]) {

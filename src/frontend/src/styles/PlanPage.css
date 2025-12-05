@@ -131,3 +131,283 @@
     width: 240px;
   }
 }
+
+/* E
+xtraction Approval Dialog */
+.extraction-approval-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.extraction-approval-dialog .dialog-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+.extraction-approval-dialog .dialog-content {
+  position: relative;
+  z-index: 2;
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 1400px; /* Increased from 600px to 1400px for wider display */
+  width: 95%; /* Use 95% of screen width */
+  max-height: 85vh; /* Slightly taller too */
+  overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.extraction-approval-dialog h2 {
+  margin: 0 0 16px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.extraction-approval-dialog h3 {
+  margin: 16px 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.extraction-approval-dialog h4 {
+  margin: 12px 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.extraction-summary {
+  margin-bottom: 20px;
+}
+
+.invoice-data p {
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.invoice-data strong {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.line-items {
+  margin-top: 12px;
+}
+
+.line-items ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.line-items li {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.validation-errors {
+  background-color: #fff4e5;
+  border: 1px solid #ffa94d;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.validation-errors h4 {
+  margin: 0 0 8px 0;
+  color: #d9480f;
+}
+
+.validation-errors ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.validation-errors li {
+  margin: 4px 0;
+  font-size: 14px;
+  color: #d9480f;
+}
+
+.extraction-metadata {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.extraction-metadata p {
+  margin: 4px 0;
+  color: #666;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.dialog-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-approve {
+  background-color: #0f6cbd;
+  color: white;
+}
+
+.btn-approve:hover {
+  background-color: #115ea3;
+}
+
+.btn-reject {
+  background-color: #d13438;
+  color: white;
+}
+
+.btn-reject:hover {
+  background-color: #a4262c;
+}
+
+.btn-approve:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.extraction-instructions {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f0f6ff;
+  border-left: 4px solid #0f6cbd;
+  font-size: 14px;
+  color: #323130;
+}
+
+/* Side-by-side layout for visualization and JSON editor */
+.extraction-content-layout {
+  display: flex;
+  gap: 16px;
+  margin: 16px 0;
+  align-items: flex-start;
+}
+
+/* When visualization is present, visualization takes 2/3, JSON takes 1/3 */
+.extraction-content-layout .visualization-container {
+  flex: 2; /* 2x wider than JSON editor */
+  min-width: 0; /* Allow flex item to shrink below content size */
+  margin: 0;
+}
+
+.extraction-content-layout .json-editor-container {
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  margin: 0;
+}
+
+/* When no visualization, JSON editor takes full width */
+.json-editor-container {
+  margin: 16px 0;
+}
+
+.json-editor-container h3 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.json-editor {
+  width: 100%;
+  min-height: 400px;
+  padding: 12px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  background-color: #f8f8f8;
+  resize: vertical;
+  overflow-y: auto;
+}
+
+.json-editor:focus {
+  outline: none;
+  border-color: #0f6cbd;
+  background-color: #fff;
+}
+
+.json-editor.json-error {
+  border-color: #d13438;
+  background-color: #fff4f4;
+}
+
+.json-error-message {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #fde7e9;
+  border: 1px solid #d13438;
+  border-radius: 4px;
+  color: #a4262c;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Visualization iframe */
+.visualization-container {
+  margin: 16px 0;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.visualization-container h3 {
+  margin: 0;
+  padding: 12px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #d0d0d0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.extraction-visualization-iframe {
+  width: 100%;
+  height: 600px; /* Increased height to match JSON editor better */
+  border: none;
+  display: block;
+  background-color: white;
+}
+
+/* Responsive: stack vertically on smaller screens */
+@media (max-width: 1200px) {
+  .extraction-content-layout {
+    flex-direction: column;
+  }
+  
+  .extraction-content-layout .visualization-container,
+  .extraction-content-layout .json-editor-container {
+    flex: none;
+    width: 100%;
+  }
+  
+  .extraction-visualization-iframe {
+    height: 400px; /* Smaller height when stacked */
+  }
+}
