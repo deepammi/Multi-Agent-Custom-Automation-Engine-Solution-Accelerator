@@ -4,7 +4,7 @@ import uuid
 from typing import List, Optional
 import asyncio
 
-from fastapi import APIRouter, Query, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Query, HTTPException, BackgroundTasks, File, UploadFile
 
 from app.models.plan import Plan, PlanResponse, ProcessRequestInput, ProcessRequestResponse, Step
 from app.models.message import AgentMessage
@@ -12,6 +12,7 @@ from app.models.team import TeamConfiguration
 from app.models.approval import PlanApprovalRequest, PlanApprovalResponse
 from app.db.repositories import PlanRepository, MessageRepository
 from app.services.agent_service import AgentService
+from app.services.file_parser_service import FileParserService
 
 logger = logging.getLogger(__name__)
 
@@ -368,3 +369,52 @@ async def get_extraction_visualization(plan_id: str):
             raise HTTPException(status_code=500, detail="Failed to generate visualization")
     
     return HTMLResponse(content=html_content)
+
+
+@router.post("/upload_file")
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Upload and extract text from invoice files.
+    Supports: .txt, .docx
+    
+    Args:
+        file: Uploaded file (multipart/form-data)
+        
+    Returns:
+        JSON response with extracted text content
+    """
+    logger.info(f"File upload request: {file.filename}")
+    
+    try:
+        # Get file size before reading
+        content = await file.read()
+        file_size = len(content)
+        
+        # Reset file pointer for extraction
+        await file.seek(0)
+        
+        # Extract text from file
+        extracted_text = await FileParserService.extract_text(file)
+        
+        logger.info(f"Successfully extracted text from {file.filename} ({file_size} bytes)")
+        
+        return {
+            "success": True,
+            "filename": file.filename,
+            "content": extracted_text,
+            "file_size": file_size,
+            "file_type": file.content_type
+        }
+        
+    except ValueError as e:
+        # Client errors (bad file type, empty file, etc.)
+        logger.warning(f"File validation error for {file.filename}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    except Exception as e:
+        # Server errors (parsing failures, etc.)
+        logger.error(f"File processing error for {file.filename}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process file: {str(e)}"
+        )

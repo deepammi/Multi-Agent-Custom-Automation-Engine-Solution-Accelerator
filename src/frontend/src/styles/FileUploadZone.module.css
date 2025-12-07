@@ -1,0 +1,106 @@
+.container {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.dropzone {
+  border: 2px dashed #d1d1d1;
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #fafafa;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropzone:hover:not(.dropzoneDisabled) {
+  border-color: #0078d4;
+  background-color: #f3f9fd;
+}
+
+.dropzoneActive {
+  border-color: #0078d4;
+  background-color: #e6f4ff;
+  border-style: solid;
+}
+
+.dropzoneDisabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: #f5f5f5;
+}
+
+.dropzoneError {
+  border-color: #d13438;
+  background-color: #fef6f6;
+}
+
+.dropzoneSuccess {
+  border-color: #107c10;
+  background-color: #f1faf1;
+}
+
+.idleContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.documentIcon {
+  color: #605e5c;
+  width: 32px;
+  height: 32px;
+}
+
+.uploadIcon {
+  color: #0078d4;
+  width: 32px;
+  height: 32px;
+}
+
+.idleText {
+  color: #323130;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.supportedFormats {
+  color: #605e5c;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.statusContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.statusText {
+  color: #323130;
+  font-size: 14px;
+}
+
+.errorText {
+  color: #d13438;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.successIcon {
+  color: #107c10;
+  width: 24px;
+  height: 24px;
+}
+
+.errorIcon {
+  color: #d13438;
+  width: 24px;
+  height: 24px;
+}

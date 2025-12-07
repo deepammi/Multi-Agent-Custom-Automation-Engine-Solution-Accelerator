@@ -1,5 +1,5 @@
 """Pydantic models for invoice data extraction."""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from datetime import date
 from decimal import Decimal
@@ -38,6 +38,22 @@ class InvoiceData(BaseModel):
     line_items: List[InvoiceLineItem] = Field(default_factory=list, description="Invoice line items")
     payment_terms: Optional[str] = Field(None, description="Payment terms")
     notes: Optional[str] = Field(None, description="Additional notes")
+    
+    @field_validator('due_date', 'invoice_date', mode='before')
+    @classmethod
+    def convert_none_string_to_null_date(cls, v):
+        """Convert string 'None' to None for optional date fields."""
+        if isinstance(v, str) and v.strip().lower() in ('none', 'null', ''):
+            return None
+        return v
+    
+    @field_validator('tax_amount', 'discount_amount', 'vendor_address', 'payment_terms', 'notes', mode='before')
+    @classmethod
+    def convert_none_string_to_null_optional(cls, v):
+        """Convert string 'None' to None for optional fields."""
+        if isinstance(v, str) and v.strip().lower() in ('none', 'null'):
+            return None
+        return v
     
     class Config:
         json_schema_extra = {

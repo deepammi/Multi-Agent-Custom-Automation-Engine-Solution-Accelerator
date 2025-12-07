@@ -46,13 +46,7 @@ export default defineConfig({
     },
 
     // Environment variables configuration
-    envPrefix: 'REACT_APP_',
-
-    // Define global constants - only expose specific env vars needed by frontend
-    define: {
-        'process.env.REACT_APP_API_URL': JSON.stringify(process.env.REACT_APP_API_URL || 'http://localhost:8000'),
-        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-    },
+    envPrefix: ['VITE_', 'REACT_APP_'],
 
     // Optimization
     optimizeDeps: {

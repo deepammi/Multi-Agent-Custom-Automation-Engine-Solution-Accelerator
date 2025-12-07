@@ -153,3 +153,31 @@
   outline: 2px solid var(--colorStrokeFocus2);
   outline-offset: 2px;
 }
+.home
+-input-attach-button {
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--borderRadiusSmall);
+  color: var(--colorNeutralForeground2);
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.home-input-attach-button:hover {
+  background-color: var(--colorSubtleBackgroundHover);
+  color: var(--colorNeutralForeground1);
+}
+
+.home-input-attach-button:active {
+  background-color: var(--colorSubtleBackgroundPressed);
+}
+
+.home-input-attach-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
