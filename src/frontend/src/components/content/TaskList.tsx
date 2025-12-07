@@ -81,7 +81,7 @@ const TaskList: React.FC<TaskListProps> = ({
       <Accordion defaultOpenItems="1" collapsible>
         <AccordionItem value="1">
           <AccordionHeader expandIconPosition="end">
-            Completed
+            Task History
           </AccordionHeader>
           <AccordionPanel>
             {loading
