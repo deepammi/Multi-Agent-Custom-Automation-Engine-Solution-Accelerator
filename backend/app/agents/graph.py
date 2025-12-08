@@ -12,6 +12,8 @@ from app.agents.nodes import (
     audit_agent_node,
     approval_checkpoint_node
 )
+from app.agents.salesforce_node import salesforce_agent_node
+from app.agents.zoho_agent_node import zoho_agent_node
 from app.agents.supervisor import supervisor_router
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,8 @@ def create_agent_graph():
     workflow.add_node("invoice", invoice_agent_node)
     workflow.add_node("closing", closing_agent_node)
     workflow.add_node("audit", audit_agent_node)
+    workflow.add_node("salesforce", salesforce_agent_node)
+    workflow.add_node("zoho", zoho_agent_node)
     
     # Set entry point
     workflow.set_entry_point("planner")
@@ -50,6 +54,8 @@ def create_agent_graph():
             "invoice": "invoice",
             "closing": "closing",
             "audit": "audit",
+            "salesforce": "salesforce",
+            "zoho": "zoho",
             "end": END
         }
     )
@@ -58,6 +64,8 @@ def create_agent_graph():
     workflow.add_edge("invoice", END)
     workflow.add_edge("closing", END)
     workflow.add_edge("audit", END)
+    workflow.add_edge("salesforce", END)
+    workflow.add_edge("zoho", END)
     
     # Compile the graph
     graph = workflow.compile()

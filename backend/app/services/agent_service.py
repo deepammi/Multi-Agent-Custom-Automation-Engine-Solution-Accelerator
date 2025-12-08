@@ -242,6 +242,12 @@ class AgentService:
                 result = closing_agent_node(state)
             elif next_agent == "audit":
                 result = audit_agent_node(state)
+            elif next_agent == "salesforce":
+                from app.agents.salesforce_node import salesforce_agent_node
+                result = await salesforce_agent_node(state)
+            elif next_agent == "zoho":
+                from app.agents.zoho_agent_node import zoho_agent_node
+                result = await zoho_agent_node(state)
             else:
                 result = {"messages": ["No specialized agent selected"], "final_result": "Task completed"}
             

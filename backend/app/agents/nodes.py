@@ -97,7 +97,15 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
     if len(task) > 100:
         task_summary += "..."
     
-    if any(word in task_lower for word in ["invoice", "payment", "bill", "vendor"]):
+    # Check for Zoho-related keywords first
+    if any(word in task_lower for word in ["zoho", "zoho invoice", "zoho customer"]):
+        next_agent = "zoho"
+        response = "I've analyzed your task: This appears to be a Zoho Invoice query. Routing to Zoho Agent."
+    # Check for Salesforce-related keywords
+    elif any(word in task_lower for word in ["salesforce", "account", "opportunity", "contact", "lead", "soql", "crm"]):
+        next_agent = "salesforce"
+        response = "I've analyzed your task: This appears to be a Salesforce data query. Routing to Salesforce Agent."
+    elif any(word in task_lower for word in ["invoice", "payment", "bill", "vendor"]):
         next_agent = "invoice"
         response = "I've analyzed your task: This appears to be an invoice processing task. Routing to Invoice Agent."
     elif any(word in task_lower for word in ["closing", "reconciliation", "journal", "variance", "gl"]):

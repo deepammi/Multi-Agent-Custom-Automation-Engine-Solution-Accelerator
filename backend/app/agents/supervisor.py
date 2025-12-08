@@ -7,10 +7,10 @@ from app.agents.state import AgentState
 logger = logging.getLogger(__name__)
 
 
-def supervisor_router(state: AgentState) -> Literal["invoice", "closing", "audit", "end"]:
+def supervisor_router(state: AgentState) -> Literal["invoice", "closing", "audit", "salesforce", "zoho", "end"]:
     """
     Supervisor router - decides which agent to call next.
-    Phase 5: Routes based on planner's decision.
+    Routes based on planner's decision, including Salesforce agent.
     """
     next_agent = state.get("next_agent")
     
