@@ -1,0 +1,127 @@
+/* Integrations Page Styles */
+
+.integrations-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #fafafa;
+  overflow: hidden;
+}
+
+.integrations-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.integrations-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.integrations-content {
+  flex: 1;
+  padding: 32px;
+  overflow: auto;
+}
+
+.integrations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.integration-card {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.integration-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.integration-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.integration-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.integration-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.integration-icon {
+  font-size: 24px;
+}
+
+.integration-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-connected {
+  background-color: #d4f4dd;
+  color: #0e7c2e;
+}
+
+.status-disconnected {
+  background-color: #f3f3f3;
+  color: #666666;
+}
+
+.integration-description {
+  color: #666666;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.integration-dropdown {
+  width: 100%;
+}
+
+.integration-footer-text {
+  font-size: 12px;
+  color: #999999;
+  margin-top: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .integrations-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .integrations-content {
+    padding: 16px;
+  }
+  
+  .integrations-header {
+    padding: 16px;
+  }
+}

@@ -11,6 +11,7 @@ import {
 import {
   ChatAdd20Regular,
   ErrorCircle20Regular,
+  PlugConnected20Regular,
 } from "@fluentui/react-icons";
 import TaskList from "./TaskList";
 import { useCallback, useEffect, useState } from "react";
@@ -253,6 +254,39 @@ const PlanPanelLeft: React.FC<PlanPanelLefProps> = ({
 
         <PanelFooter>
           <div className="panel-footer-content">
+            {/* Integrations Button */}
+            <div
+              className="tab tab-integrations"
+              onClick={() => navigate('/integrations')}
+              tabIndex={0}
+              role="button"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate('/integrations');
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                marginBottom: '12px',
+                transition: 'background-color 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+            >
+              <PlugConnected20Regular />
+              <Body1Strong>Integrations</Body1Strong>
+            </div>
+
             {/* User Card */}
             <PanelUserCard
               name={userInfo?.user_first_last_name || "Guest"}
