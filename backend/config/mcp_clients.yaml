@@ -1,0 +1,66 @@
+# MCP Client Configuration
+# This file configures MCP server connections and client behavior
+
+# Global client settings
+connection_pool_size: 10
+default_timeout: 30
+enable_health_monitoring: true
+log_level: "INFO"
+
+# Connection recovery configuration
+recovery_config:
+  max_retry_attempts: 5
+  base_backoff_seconds: 1.0
+  max_backoff_seconds: 60.0
+  backoff_multiplier: 2.0
+  jitter_enabled: true
+  timeout_detection_threshold: 3
+  health_check_failure_threshold: 3
+  auto_recovery_enabled: true
+
+# MCP server configurations
+servers:
+  - service_name: "bill_com"
+    server_command: "python3"
+    server_args: ["src/mcp_server/mcp_server.py"]
+    timeout: 30
+    retry_attempts: 3
+    health_check_interval: 60
+    environment:
+      # Add Bill.com specific environment variables here
+      # BILL_COM_API_KEY: "${BILL_COM_API_KEY}"
+      # BILL_COM_ORG_ID: "${BILL_COM_ORG_ID}"
+
+  - service_name: "gmail"
+    server_command: "python3"
+    server_args: ["src/mcp_server/gmail_mcp_server.py"]
+    timeout: 20
+    retry_attempts: 3
+    health_check_interval: 60
+    environment:
+      # Add Gmail specific environment variables here
+      # GMAIL_CREDENTIALS_PATH: "${GMAIL_CREDENTIALS_PATH}"
+      # GMAIL_TOKEN_PATH: "${GMAIL_TOKEN_PATH}"
+
+  - service_name: "zoho"
+    server_command: "python3"
+    server_args: ["src/mcp_server/zoho_mcp_server.py"]
+    timeout: 25
+    retry_attempts: 3
+    health_check_interval: 60
+    environment:
+      # Add Zoho specific environment variables here
+      # ZOHO_CLIENT_ID: "${ZOHO_CLIENT_ID}"
+      # ZOHO_CLIENT_SECRET: "${ZOHO_CLIENT_SECRET}"
+      # ZOHO_REFRESH_TOKEN: "${ZOHO_REFRESH_TOKEN}"
+
+  - service_name: "salesforce"
+    server_command: "python3"
+    server_args: ["src/mcp_server/salesforce_mcp_server.py"]
+    timeout: 30
+    retry_attempts: 3
+    health_check_interval: 60
+    environment:
+      # Add Salesforce specific environment variables here
+      # SALESFORCE_ORG_ALIAS: "${SALESFORCE_ORG_ALIAS}"
+      # SALESFORCE_USERNAME: "${SALESFORCE_USERNAME}"

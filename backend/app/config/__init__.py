@@ -5,10 +5,24 @@ from app.config.validation_rules import (
     ValidationRulesConfig,
     InvoiceValidator
 )
+from app.config.mcp_config import (
+    MCPServerConfig,
+    ConnectionRecoveryConfig,
+    MCPClientConfig,
+    MCPConfigManager,
+    get_mcp_config_manager,
+    load_mcp_config
+)
 
 __all__ = [
     "ValidationSeverity",
     "ValidationRule",
     "ValidationRulesConfig",
-    "InvoiceValidator"
+    "InvoiceValidator",
+    "MCPServerConfig",
+    "ConnectionRecoveryConfig", 
+    "MCPClientConfig",
+    "MCPConfigManager",
+    "get_mcp_config_manager",
+    "load_mcp_config"
 ]

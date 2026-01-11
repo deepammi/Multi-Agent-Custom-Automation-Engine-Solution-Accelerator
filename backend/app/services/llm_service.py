@@ -30,6 +30,9 @@ def sanitize_for_logging(text: str) -> str:
     # Remove Anthropic API keys (sk-ant-...)
     text = re.sub(r'sk-ant-[a-zA-Z0-9]{20,}', '[ANTHROPIC_KEY_REDACTED]', text)
     
+    # Remove Google API keys (AIza...)
+    text = re.sub(r'AIza[a-zA-Z0-9_-]{35}', '[GOOGLE_KEY_REDACTED]', text)
+    
     # Remove generic API keys
     text = re.sub(r'api[_-]?key["\']?\s*[:=]\s*["\']?[a-zA-Z0-9]{20,}', 'api_key=[REDACTED]', text, flags=re.IGNORECASE)
     
@@ -145,10 +148,33 @@ class LLMService:
                 )
                 logger.info(f"✅ Ollama initialized with model: {model} at {base_url}")
                 
+            elif provider == "gemini" or provider == "google":
+                try:
+                    from langchain_google_genai import ChatGoogleGenerativeAI
+                except ImportError:
+                    raise ValueError(
+                        "langchain-google-genai package is required for Gemini provider. "
+                        "Install with: pip install langchain-google-genai"
+                    )
+                
+                api_key = os.getenv("GOOGLE_API_KEY")
+                if not api_key:
+                    raise ValueError("GOOGLE_API_KEY environment variable is required for Gemini provider")
+                
+                model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+                temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+                
+                cls._llm_instance = ChatGoogleGenerativeAI(
+                    google_api_key=api_key,
+                    model=model,
+                    temperature=temperature
+                )
+                logger.info(f"✅ Gemini initialized with model: {model}")
+                
             else:
                 raise ValueError(
                     f"Invalid LLM provider: {provider}. "
-                    f"Supported providers: openai, anthropic, ollama"
+                    f"Supported providers: openai, anthropic, ollama, gemini"
                 )
             
             return cls._llm_instance
@@ -160,16 +186,20 @@ class LLMService:
     @classmethod
     def is_mock_mode(cls) -> bool:
         """
-        Check if mock mode is enabled.
+        Check if LLM mock mode is enabled via environment variable.
+        
+        Uses centralized environment configuration for consistency.
         
         Returns:
             bool: True if mock mode is enabled, False otherwise
         """
-        use_mock = os.getenv("USE_MOCK_LLM", "false").lower()
-        is_mock = use_mock in ("true", "1", "yes")
+        from app.config.environment import get_environment_config
+        
+        env_config = get_environment_config()
+        is_mock = env_config.is_mock_llm_enabled()
         
         if is_mock:
-            logger.info("🎭 Mock mode is ENABLED - using dummy responses")
+            logger.info("🎭 LLM Mock mode is ENABLED via USE_MOCK_LLM environment variable")
         
         return is_mock
     
@@ -470,6 +500,97 @@ class LLMService:
     def _get_timeout(cls) -> int:
         """Get configured timeout value."""
         return int(os.getenv("LLM_TIMEOUT", "60"))
+    
+    @classmethod
+    async def call_llm_non_streaming(
+        cls,
+        prompt: str,
+        agent_name: str = "Agent"
+    ) -> str:
+        """
+        Call LLM without streaming support for simple use cases.
+        
+        Args:
+            prompt: The prompt to send to the LLM
+            agent_name: Name of the agent making the call
+            
+        Returns:
+            str: Complete response from LLM
+            
+        Raises:
+            LLMTimeoutError: If LLM call exceeds timeout
+            LLMAuthError: If authentication fails
+            LLMRateLimitError: If rate limit is exceeded
+            LLMNetworkError: If network error occurs
+            LLMError: For other LLM errors
+        """
+        # Check if mock mode is enabled
+        if cls.is_mock_mode():
+            logger.info(f"🎭 Mock mode enabled - returning mock response for {agent_name}")
+            return cls.get_mock_response(agent_name, prompt)
+        
+        try:
+            # Get LLM instance
+            llm = cls.get_llm_instance()
+            timeout = cls._get_timeout()
+            
+            logger.info(
+                f"🤖 Calling LLM (non-streaming) for {agent_name}",
+                extra={
+                    "agent": agent_name,
+                    "prompt_length": len(prompt),
+                    "timeout": timeout,
+                    "provider": cls._provider
+                }
+            )
+            
+            # Make the LLM call with timeout
+            start_time = asyncio.get_event_loop().time()
+            
+            try:
+                response = await asyncio.wait_for(
+                    llm.ainvoke([HumanMessage(content=prompt)]),
+                    timeout=timeout
+                )
+                
+                # Extract content from response
+                if hasattr(response, 'content'):
+                    full_response = response.content
+                else:
+                    full_response = str(response)
+                
+                completion_time = asyncio.get_event_loop().time() - start_time
+                
+                logger.info(
+                    f"✅ LLM call completed for {agent_name}",
+                    extra={
+                        "agent": agent_name,
+                        "response_length": len(full_response),
+                        "completion_time": f"{completion_time:.2f}s",
+                        "provider": cls._provider
+                    }
+                )
+                
+                return full_response
+                
+            except asyncio.TimeoutError:
+                error_msg = f"LLM call timed out after {timeout}s"
+                logger.error(f"❌ {error_msg} [agent={agent_name}, timeout={timeout}s]")
+                raise LLMTimeoutError(error_msg)
+                
+        except Exception as e:
+            logger.error(f"❌ LLM call failed for {agent_name}: {e}")
+            # Re-raise with appropriate error type
+            if "timeout" in str(e).lower():
+                raise LLMTimeoutError(f"LLM timeout: {e}")
+            elif "auth" in str(e).lower() or "api_key" in str(e).lower():
+                raise LLMAuthError(f"LLM authentication error: {e}")
+            elif "rate" in str(e).lower() or "limit" in str(e).lower():
+                raise LLMRateLimitError(f"LLM rate limit error: {e}")
+            elif "network" in str(e).lower() or "connection" in str(e).lower():
+                raise LLMNetworkError(f"LLM network error: {e}")
+            else:
+                raise LLMError(f"LLM error: {e}")
     
     @classmethod
     def reset(cls):

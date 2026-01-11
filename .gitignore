@@ -470,3 +470,33 @@ data/sample_code/
 .archive/
 backend/.archive/
 */.archive/
+# Root directory organization
+temp/
+*.log
+test_results_*.json
+trace_*.json
+
+# Secrets and sensitive files
+config/secrets/
+client_secret.json
+
+# Development tools
+tools/development/temp/
+# OAuth and API credentials
+client_secret*.json
+credentials*.json
+**/secrets/**
+config/secrets/
+*.pem
+*.key
+.env.local
+.env.production
+# Gmail credentials and OAuth tokens (prevent real credentials from being committed)
+**/test_gmail_credentials.py
+backend/tests/integration/test_gmail_credentials.py
+*_credentials.py
+*oauth*.json
+*refresh_token*
+*access_token*
+GOCSPX-*
+*//04*

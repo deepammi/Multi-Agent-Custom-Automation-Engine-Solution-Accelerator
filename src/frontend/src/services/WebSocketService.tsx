@@ -1,6 +1,6 @@
 import { getApiUrl, getUserId, headerBuilder } from '../api/config';
 import { PlanDataService } from './PlanDataService';
-import { MPlanData, ParsedPlanApprovalRequest, StreamingPlanUpdate, StreamMessage, WebsocketMessageType } from '../models';
+import { MPlanData, ParsedPlanApprovalRequest, StreamingPlanUpdate, StreamMessage, WebsocketMessageType, ComprehensiveResultsMessage, FinalResultsApprovalRequest, WorkflowProgressUpdate, AgentResult } from '../models';
 
 
 class WebSocketService {
@@ -166,6 +166,24 @@ class WebSocketService {
         });
     }
 
+    onComprehensiveResultsReady(callback: (results: ComprehensiveResultsMessage) => void): () => void {
+        return this.on(WebsocketMessageType.COMPREHENSIVE_RESULTS_READY, (message: StreamMessage) => {
+            if (message.data) callback(message.data);
+        });
+    }
+
+    onFinalResultsApprovalRequest(callback: (request: FinalResultsApprovalRequest) => void): () => void {
+        return this.on(WebsocketMessageType.FINAL_RESULTS_APPROVAL_REQUEST, (message: StreamMessage) => {
+            if (message.data) callback(message.data);
+        });
+    }
+
+    onWorkflowProgressUpdate(callback: (progress: WorkflowProgressUpdate) => void): () => void {
+        return this.on(WebsocketMessageType.WORKFLOW_PROGRESS_UPDATE, (message: StreamMessage) => {
+            if (message.data) callback(message.data);
+        });
+    }
+
     private emit(eventType: string, data: any): void {
         const message: StreamMessage = {
             type: eventType as any,
@@ -206,8 +224,15 @@ class WebSocketService {
                     console.log('WebSocket message received:', message);
                     const transformed = PlanDataService.parseAgentMessage(message);
                     console.log('Transformed AGENT_MESSAGE:', transformed);
-                    this.emit(WebsocketMessageType.AGENT_MESSAGE, transformed);
-
+                    
+                    if (transformed) {
+                        this.emit(WebsocketMessageType.AGENT_MESSAGE, transformed);
+                    } else {
+                        console.error('❌ Failed to parse agent message:', message);
+                        console.error('❌ parseAgentMessage returned null');
+                    }
+                } else {
+                    console.error('❌ Agent message has no data:', message);
                 }
                 break;
             }
@@ -270,6 +295,38 @@ class WebSocketService {
                 break;
             }
 
+            case WebsocketMessageType.COMPREHENSIVE_RESULTS_READY: {
+                console.log("Message comprehensive results ready:", message);
+                if (message.data) {
+                    this.emit(WebsocketMessageType.COMPREHENSIVE_RESULTS_READY, message.data);
+                }
+                break;
+            }
+
+            case WebsocketMessageType.FINAL_RESULTS_APPROVAL_REQUEST: {
+                console.log("Message final results approval request:", message);
+                if (message.data) {
+                    this.emit(WebsocketMessageType.FINAL_RESULTS_APPROVAL_REQUEST, message.data);
+                }
+                break;
+            }
+
+            case WebsocketMessageType.FINAL_RESULTS_APPROVAL_RESPONSE: {
+                console.log("Message final results approval response:", message);
+                if (message.data) {
+                    this.emit(WebsocketMessageType.FINAL_RESULTS_APPROVAL_RESPONSE, message.data);
+                }
+                break;
+            }
+
+            case WebsocketMessageType.WORKFLOW_PROGRESS_UPDATE: {
+                console.log("Message workflow progress update:", message);
+                if (message.data) {
+                    this.emit(WebsocketMessageType.WORKFLOW_PROGRESS_UPDATE, message.data);
+                }
+                break;
+            }
+
             default: {
                 console.log("Message default':", message);
                 this.emit(message.type, message);
@@ -329,6 +386,36 @@ class WebSocketService {
             this.ws.send(JSON.stringify(message));
         } catch {
             this.emit('error', { error: 'Failed to send plan approval response' });
+        }
+    }
+
+    sendFinalResultsApprovalResponse(response: {
+        plan_id: string;
+        approved: boolean;
+        revision_type?: 'none' | 'full_replan' | 'specific_agents' | 'analysis_only';
+        target_agents?: string[];
+        feedback?: string;
+        export_results?: boolean;
+    }): void {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            this.emit('error', { error: 'Cannot send final results approval response - WebSocket not connected' });
+            return;
+        }
+        try {
+            const message = {
+                type: WebsocketMessageType.FINAL_RESULTS_APPROVAL_RESPONSE,
+                data: {
+                    plan_id: response.plan_id,
+                    approved: response.approved,
+                    revision_type: response.revision_type || 'none',
+                    target_agents: response.target_agents || [],
+                    feedback: response.feedback || '',
+                    export_results: response.export_results || false
+                }
+            };
+            this.ws.send(JSON.stringify(message));
+        } catch {
+            this.emit('error', { error: 'Failed to send final results approval response' });
         }
     }
 }

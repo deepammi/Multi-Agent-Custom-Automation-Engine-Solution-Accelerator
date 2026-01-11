@@ -1,0 +1,67 @@
+{
+  "configuration": {
+    "status": "fail",
+    "details": {
+      "missing_required": [
+        "BILL_COM_USERNAME",
+        "BILL_COM_PASSWORD",
+        "BILL_COM_ORG_ID",
+        "BILL_COM_DEV_KEY"
+      ],
+      "errors": [
+        "Missing required variables: BILL_COM_USERNAME, BILL_COM_PASSWORD, BILL_COM_ORG_ID, BILL_COM_DEV_KEY"
+      ]
+    }
+  },
+  "connectivity": {
+    "status": "fail",
+    "details": {
+      "error": "Bill.com configuration errors: Username is required; Password is required; Organization ID is required; Developer key is required"
+    }
+  },
+  "authentication": {
+    "status": "fail",
+    "details": {
+      "error": "Authentication failed"
+    }
+  },
+  "mcp_tools": {
+    "status": "fail",
+    "details": {
+      "error": "Import error: No module named 'fastmcp'"
+    }
+  },
+  "agent_integration": {
+    "status": "pass",
+    "details": {
+      "invoice_agent": {
+        "status": "pass",
+        "response_time_ms": 44.831037521362305,
+        "mentions_billcom": true
+      },
+      "audit_agent": {
+        "status": "pass",
+        "response_length": 548
+      }
+    }
+  },
+  "performance": {
+    "status": "pass",
+    "details": {
+      "service_creation_avg_ms": 25.797287623087566,
+      "concurrent_operations": {
+        "total_tasks": 3,
+        "successful_tasks": 3,
+        "total_time_ms": 49.465179443359375
+      }
+    }
+  },
+  "overall": {
+    "status": "fail",
+    "summary": "4/6 test categories failed",
+    "total_time_seconds": 1.0332019329071045,
+    "tests_passed": 2,
+    "tests_failed": 4,
+    "tests_total": 6
+  }
+}

@@ -140,7 +140,7 @@ async def user_browser_language(request: dict):
 app.include_router(v3_router)
 
 # WebSocket route
-app.add_api_websocket_route("/api/v3/socket/{plan_id}", websocket_endpoint)
+app.websocket("/api/v3/socket/{plan_id}")(websocket_endpoint)
 
 
 if __name__ == "__main__":

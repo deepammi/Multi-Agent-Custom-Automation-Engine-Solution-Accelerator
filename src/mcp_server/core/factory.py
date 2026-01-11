@@ -19,6 +19,9 @@ class Domain(Enum):
     RETAIL = "retail"
     GENERAL = "general"
     DATA = "data"
+    BILL_COM = "bill_com"
+    SALESFORCE = "salesforce"
+    GMAIL = "gmail"
 
 
 class MCPToolBase(ABC):

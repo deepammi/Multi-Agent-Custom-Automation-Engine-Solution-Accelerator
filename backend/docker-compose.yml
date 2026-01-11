@@ -16,5 +16,40 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: .
+    container_name: macae-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ../src/mcp_server:/app/src/mcp_server
+    environment:
+      # Database
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DATABASE=macae_db
+      
+      # MCP Configuration
+      - MCP_POOL_SIZE=10
+      - MCP_DEFAULT_TIMEOUT=30
+      - MCP_HEALTH_MONITORING=true
+      - MCP_LOG_LEVEL=INFO
+      
+      # Service-specific environment variables (customize as needed)
+      # - MCP_BILL_COM_ENV_BILL_COM_API_KEY=${BILL_COM_API_KEY}
+      # - MCP_GMAIL_ENV_GMAIL_CREDENTIALS_PATH=/app/credentials/gmail_credentials.json
+      # - MCP_ZOHO_ENV_ZOHO_CLIENT_ID=${ZOHO_CLIENT_ID}
+      # - MCP_SALESFORCE_ENV_SALESFORCE_ORG_ALIAS=${SALESFORCE_ORG_ALIAS}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   mongodb_data:

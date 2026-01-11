@@ -1,7 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Spinner
+    Spinner,
+    Switch,
+    Label,
+    Text,
+    Badge
 } from '@fluentui/react-components';
 import '../styles/PlanPage.css';
 import CoralShellColumn from '../coral/components/Layout/CoralShellColumn';
@@ -25,6 +29,9 @@ const HomePage: React.FC = () => {
     const [selectedTeam, setSelectedTeam] = useState<TeamConfig | null>(null);
     const [isLoadingTeam, setIsLoadingTeam] = useState<boolean>(true);
     const [reloadLeftList, setReloadLeftList] = useState<boolean>(true);
+    const [comprehensiveTestingMode, setComprehensiveTestingMode] = useState<boolean>(false);
+    const [workflowInProgress, setWorkflowInProgress] = useState<boolean>(false);
+    const [workflowStage, setWorkflowStage] = useState<string>('');
 
     useEffect(() => {
         const initTeam = async () => {
@@ -86,13 +93,84 @@ const HomePage: React.FC = () => {
     }, []);
 
     /**
+     * Handle comprehensive testing mode toggle
+     */
+    const handleComprehensiveTestingToggle = useCallback((checked: boolean) => {
+        setComprehensiveTestingMode(checked);
+        if (checked) {
+            showToast(
+                "Comprehensive testing mode enabled - multi-agent workflows with dual HITL approval",
+                "info"
+            );
+        } else {
+            showToast(
+                "Standard mode enabled - single agent workflows",
+                "info"
+            );
+        }
+    }, [showToast]);
+
+    /**
+     * Handle workflow progress updates
+     */
+    const handleWorkflowProgress = useCallback((stage: string, inProgress: boolean) => {
+        setWorkflowStage(stage);
+        setWorkflowInProgress(inProgress);
+    }, []);
+
+    /**
+     * Validate query for multi-agent workflows
+     */
+    const validateMultiAgentQuery = useCallback((query: string): { isValid: boolean; message?: string } => {
+        if (!query || query.trim().length === 0) {
+            return { isValid: false, message: "Query cannot be empty" };
+        }
+
+        if (query.trim().length < 10) {
+            return { isValid: false, message: "Query too short for multi-agent workflow (minimum 10 characters)" };
+        }
+
+        if (comprehensiveTestingMode && !selectedTeam) {
+            return { isValid: false, message: "Please select a team for comprehensive testing mode" };
+        }
+
+        if (comprehensiveTestingMode && (!selectedTeam?.agents || selectedTeam.agents.length < 2)) {
+            return { isValid: false, message: "Comprehensive testing requires a team with multiple agents" };
+        }
+
+        return { isValid: true };
+    }, [comprehensiveTestingMode, selectedTeam]);
+
+    /**
+     * Get workflow configuration based on mode and team
+     */
+    const getWorkflowConfig = useCallback(() => {
+        if (!comprehensiveTestingMode) {
+            return {
+                mode: 'standard' as const,
+                requiresPlanApproval: false,
+                requiresFinalApproval: false,
+                expectedAgents: selectedTeam?.agents?.slice(0, 1) || []
+            };
+        }
+
+        return {
+            mode: 'comprehensive' as const,
+            requiresPlanApproval: true,
+            requiresFinalApproval: true,
+            expectedAgents: selectedTeam?.agents || []
+        };
+    }, [comprehensiveTestingMode, selectedTeam]);
+
+    /**
     * Handle new task creation from the "New task" button
     * Resets textarea to empty state on HomePage
     */
     const handleNewTaskButton = useCallback(() => {
         NewTaskService.handleNewTaskFromHome();
+        setWorkflowInProgress(false);
+        setWorkflowStage('');
     }, []);
-
     /**
      * Handle team selection from the Settings button
      */
@@ -191,10 +269,43 @@ const HomePage: React.FC = () => {
                     <Content>
                         <ContentToolbar
                             panelTitle={"Nolij Invoice Management Team"}
-                        ></ContentToolbar>
+                        >
+                            {/* Comprehensive Testing Mode Toggle */}
+                            <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '12px',
+                                marginLeft: 'auto'
+                            }}>
+                                {workflowInProgress && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Spinner size="tiny" />
+                                        <Text size={200}>{workflowStage}</Text>
+                                    </div>
+                                )}
+                                <Label htmlFor="comprehensive-mode-toggle">
+                                    Comprehensive Testing
+                                </Label>
+                                <Switch
+                                    id="comprehensive-mode-toggle"
+                                    checked={comprehensiveTestingMode}
+                                    onChange={(_, data) => handleComprehensiveTestingToggle(data.checked)}
+                                    disabled={workflowInProgress}
+                                />
+                                {comprehensiveTestingMode && (
+                                    <Badge appearance="filled" color="brand" size="small">
+                                        Multi-Agent HITL
+                                    </Badge>
+                                )}
+                            </div>
+                        </ContentToolbar>
                         {!isLoadingTeam ? (
                             <HomeInput
                                 selectedTeam={selectedTeam}
+                                comprehensiveTestingMode={comprehensiveTestingMode}
+                                onWorkflowProgress={handleWorkflowProgress}
+                                validateQuery={validateMultiAgentQuery}
+                                workflowConfig={getWorkflowConfig()}
                             />
                         ) : (
                             <div style={{

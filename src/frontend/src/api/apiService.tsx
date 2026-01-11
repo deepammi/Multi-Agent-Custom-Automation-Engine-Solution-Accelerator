@@ -20,12 +20,12 @@ import {
 
 // Constants for endpoints
 const API_ENDPOINTS = {
-    PROCESS_REQUEST: '/v3/process_request',
+    PROCESS_REQUEST: '/v3/process_request_v2',  // Updated to use workflow-enabled endpoint
     PLANS: '/v3/plans',
     PLAN: '/v3/plan',
     PLAN_APPROVAL: '/v3/plan_approval',
     HUMAN_CLARIFICATION: '/v3/user_clarification',
-    USER_BROWSER_LANGUAGE: '/user_browser_language',
+    USER_BROWSER_LANGUAGE: '/v3/user_browser_language',  // Fixed: Added /v3 prefix
     AGENT_MESSAGE: '/v3/agent_message',
 };
 

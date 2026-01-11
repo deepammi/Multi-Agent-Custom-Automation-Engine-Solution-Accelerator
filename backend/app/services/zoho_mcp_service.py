@@ -1,4 +1,12 @@
-"""Zoho Invoice MCP client service for interacting with Zoho Invoice data."""
+"""
+Zoho Invoice MCP client service for interacting with Zoho Invoice data.
+
+This service now uses standardized MCP protocol while maintaining backward compatibility.
+The original HTTP-based implementation is preserved as a fallback.
+
+**Feature: mcp-client-standardization, Property 1: MCP Protocol Compliance**
+**Validates: Requirements 1.1, 1.3, 1.5**
+"""
 import logging
 import os
 import requests
@@ -6,6 +14,21 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+# Flag to control whether to use standardized MCP client or legacy HTTP client
+USE_STANDARDIZED_MCP = os.getenv("ZOHO_USE_STANDARDIZED_MCP", "true").lower() == "true"
+
+if USE_STANDARDIZED_MCP:
+    try:
+        from app.services.zoho_standard_mcp_client import ZohoStandardMCPClient
+        STANDARDIZED_CLIENT_AVAILABLE = True
+        logger.info("Using standardized Zoho MCP client")
+    except ImportError as e:
+        STANDARDIZED_CLIENT_AVAILABLE = False
+        logger.warning(f"Standardized MCP client not available, falling back to legacy: {e}")
+else:
+    STANDARDIZED_CLIENT_AVAILABLE = False
+    logger.info("Using legacy Zoho HTTP client (standardized MCP disabled)")
 
 
 class ZohoMCPService:
@@ -16,6 +39,15 @@ class ZohoMCPService:
         self._initialized = False
         self.enabled = os.getenv("ZOHO_MCP_ENABLED", "false").lower() == "true"
         self.use_mock = os.getenv("ZOHO_USE_MOCK", "true").lower() == "true"
+        
+        # Initialize standardized client if available
+        self._standardized_client = None
+        if USE_STANDARDIZED_MCP and STANDARDIZED_CLIENT_AVAILABLE:
+            self._use_standardized = True
+            logger.info("Zoho service will use standardized MCP client")
+        else:
+            self._use_standardized = False
+            logger.info("Zoho service will use legacy HTTP client")
         
         # OAuth configuration
         self.client_id = os.getenv("ZOHO_CLIENT_ID", "").strip()
@@ -50,12 +82,25 @@ class ZohoMCPService:
         if self._initialized:
             return
         
-        if self.use_mock:
-            logger.info("Zoho MCP service initialized in MOCK mode")
-        elif self.enabled and self.refresh_token:
-            logger.info("Zoho MCP service initialized with OAuth")
-        else:
-            logger.warning("Zoho MCP service initialized but OAuth not configured")
+        if self._use_standardized:
+            # Initialize standardized MCP client
+            try:
+                self._standardized_client = ZohoStandardMCPClient()
+                await self._standardized_client.initialize()
+                logger.info("Zoho MCP service initialized with standardized MCP client")
+            except Exception as e:
+                logger.error(f"Failed to initialize standardized MCP client: {e}")
+                self._use_standardized = False
+                logger.info("Falling back to legacy HTTP client")
+        
+        if not self._use_standardized:
+            # Use legacy initialization
+            if self.use_mock:
+                logger.info("Zoho MCP service initialized in MOCK mode")
+            elif self.enabled and self.refresh_token:
+                logger.info("Zoho MCP service initialized with OAuth")
+            else:
+                logger.warning("Zoho MCP service initialized but OAuth not configured")
         
         self._initialized = True
     
@@ -227,6 +272,15 @@ class ZohoMCPService:
         if not self._initialized:
             await self.initialize()
         
+        # Use standardized MCP client if available
+        if self._use_standardized and self._standardized_client:
+            try:
+                return await self._standardized_client.list_invoices(status=status, limit=limit)
+            except Exception as e:
+                logger.error(f"Standardized MCP client failed, falling back to legacy: {e}")
+                self._use_standardized = False
+        
+        # Use legacy implementation
         # Use mock data if enabled
         if self.use_mock:
             logger.info("Using mock invoice data")
@@ -274,6 +328,15 @@ class ZohoMCPService:
         if not self._initialized:
             await self.initialize()
         
+        # Use standardized MCP client if available
+        if self._use_standardized and self._standardized_client:
+            try:
+                return await self._standardized_client.get_invoice(invoice_identifier)
+            except Exception as e:
+                logger.error(f"Standardized MCP client failed, falling back to legacy: {e}")
+                self._use_standardized = False
+        
+        # Use legacy implementation
         # Use mock data if enabled
         if self.use_mock:
             logger.info(f"Using mock data for invoice {invoice_identifier}")
@@ -332,6 +395,15 @@ class ZohoMCPService:
         if not self._initialized:
             await self.initialize()
         
+        # Use standardized MCP client if available
+        if self._use_standardized and self._standardized_client:
+            try:
+                return await self._standardized_client.list_customers(limit=limit)
+            except Exception as e:
+                logger.error(f"Standardized MCP client failed, falling back to legacy: {e}")
+                self._use_standardized = False
+        
+        # Use legacy implementation
         # Use mock data if enabled
         if self.use_mock:
             logger.info("Using mock customer data")
@@ -366,6 +438,15 @@ class ZohoMCPService:
         if not self._initialized:
             await self.initialize()
         
+        # Use standardized MCP client if available
+        if self._use_standardized and self._standardized_client:
+            try:
+                return await self._standardized_client.get_invoice_summary()
+            except Exception as e:
+                logger.error(f"Standardized MCP client failed, falling back to legacy: {e}")
+                self._use_standardized = False
+        
+        # Use legacy implementation
         # Get all invoices
         result = await self.list_invoices(limit=100)
         

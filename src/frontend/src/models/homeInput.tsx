@@ -23,6 +23,15 @@ export interface QuickTask {
 
 export interface HomeInputProps {
     selectedTeam?: TeamConfig | null;
+    comprehensiveTestingMode?: boolean;
+    onWorkflowProgress?: (stage: string, inProgress: boolean) => void;
+    validateQuery?: (query: string) => { isValid: boolean; message?: string };
+    workflowConfig?: {
+        mode: 'standard' | 'comprehensive';
+        requiresPlanApproval: boolean;
+        requiresFinalApproval: boolean;
+        expectedAgents: any[];
+    };
 }
 export const iconMap: Record<string, React.ReactNode> = {
     // Task/Logo icons

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { useParams, useNavigate } from "react-router-dom";
 import { Spinner, Text } from "@fluentui/react-components";
 import { PlanDataService } from "../services/PlanDataService";
-import { ProcessedPlanData, WebsocketMessageType, MPlanData, AgentMessageData, AgentMessageType, ParsedUserClarification, AgentType, PlanStatus, FinalMessage, TeamConfig } from "../models";
+import { ProcessedPlanData, WebsocketMessageType, MPlanData, AgentMessageData, AgentMessageType, ParsedUserClarification, AgentType, PlanStatus, FinalMessage, TeamConfig, ComprehensiveResultsMessage, FinalResultsApprovalRequest, WorkflowProgressUpdate, AgentResult } from "../models";
 import PlanChat from "../components/content/PlanChat";
 import PlanPanelRight from "../components/content/PlanPanelRight";
 import PlanPanelLeft from "../components/content/PlanPanelLeft";
@@ -78,12 +78,78 @@ const PlanPage: React.FC = () => {
 
     const [loadingMessage, setLoadingMessage] = useState<string>(loadingMessages[0]);
 
+    // Workflow progress state for real-time progress display
+    const [workflowProgress, setWorkflowProgress] = useState<WorkflowProgressUpdate | null>(null);
+
+    // Error handling state for workflow failures
+    const [workflowError, setWorkflowError] = useState<{
+        title?: string;
+        message: string;
+    } | null>(null);
+
     // Plan cancellation alert hook
     const { isPlanActive, handleNavigationWithConfirmation } = usePlanCancellationAlert({
         planData,
         planApprovalRequest,
         onNavigate: pendingNavigation || (() => {})
     });
+
+    // Reset plan variables function - defined early to avoid temporal dead zone
+    const resetPlanVariables = useCallback(() => {
+        setInput("");
+        setPlanData(null);
+        setLoading(true);
+        setSubmittingChatDisableInput(true);
+        setErrorLoading(false);
+        setClarificationMessage(null);
+        setProcessingApproval(false);
+        setPlanApprovalRequest(null);
+        setReloadLeftList(true);
+        setWaitingForPlan(true);
+        setShowProcessingPlanSpinner(false);
+        setShowApprovalButtons(true);
+        setContinueWithWebsocketFlow(false);
+        setWsConnected(false);
+        setStreamingMessages([]);
+        setStreamingMessageBuffer("");
+        setShowBufferingText(false);
+        setAgentMessages([]);
+        setTaskCompleted(false);
+    }, [
+        setInput,
+        setPlanData,
+        setLoading,
+        setSubmittingChatDisableInput,
+        setErrorLoading,
+        setClarificationMessage,
+        setProcessingApproval,
+        setPlanApprovalRequest,
+        setReloadLeftList,
+        setWaitingForPlan,
+        setShowProcessingPlanSpinner,
+        setShowApprovalButtons,
+        setContinueWithWebsocketFlow,
+        setWsConnected,
+        setStreamingMessages,
+        setStreamingMessageBuffer,
+        setShowBufferingText,
+        setAgentMessages,
+        setTaskCompleted
+    ]);
+
+    // Handle workflow restart after error
+    const handleRestartWorkflow = useCallback(() => {
+        console.log('🔄 Restarting workflow after error');
+        
+        // Clear error state
+        setWorkflowError(null);
+        
+        // Reset all workflow state
+        resetPlanVariables();
+        
+        // Navigate to home page to start new task
+        navigate('/', { state: { focusInput: true } });
+    }, [navigate, resetPlanVariables]);
 
     // Enable WebSocket flow immediately when plan page loads to prevent race conditions
     useEffect(() => {
@@ -190,47 +256,6 @@ const PlanPage: React.FC = () => {
 
     }, [setReloadLeftList]);
 
-    const resetPlanVariables = useCallback(() => {
-        setInput("");
-        setPlanData(null);
-        setLoading(true);
-        setSubmittingChatDisableInput(true);
-        setErrorLoading(false);
-        setClarificationMessage(null);
-        setProcessingApproval(false);
-        setPlanApprovalRequest(null);
-        setReloadLeftList(true);
-        setWaitingForPlan(true);
-        setShowProcessingPlanSpinner(false);
-        setShowApprovalButtons(true);
-        setContinueWithWebsocketFlow(false);
-        setWsConnected(false);
-        setStreamingMessages([]);
-        setStreamingMessageBuffer("");
-        setShowBufferingText(false);
-        setAgentMessages([]);
-        setTaskCompleted(false);
-    }, [
-        setInput,
-        setPlanData,
-        setLoading,
-        setSubmittingChatDisableInput,
-        setErrorLoading,
-        setClarificationMessage,
-        setProcessingApproval,
-        setPlanApprovalRequest,
-        setReloadLeftList,
-        setWaitingForPlan,
-        setShowProcessingPlanSpinner,
-        setShowApprovalButtons,
-        setContinueWithWebsocketFlow,
-        setWsConnected,
-        setStreamingMessages,
-        setStreamingMessageBuffer,
-        setShowBufferingText,
-        setAgentMessages
-    ]);
-
     // Auto-scroll helper
     const scrollToBottom = useCallback(() => {
         setTimeout(() => {
@@ -306,9 +331,33 @@ const PlanPage: React.FC = () => {
     //(WebsocketMessageType.AGENT_MESSAGE_STREAMING
     useEffect(() => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.AGENT_MESSAGE_STREAMING, (streamingMessage: any) => {
-            //console.log('📋 Streaming Message', streamingMessage);
-            // if is final true clear buffer and add final message to agent messages
-            const line = PlanDataService.simplifyHumanClarification(streamingMessage.data.content);
+            console.log('📋 Streaming Message received:', streamingMessage);
+            
+            // The streamingMessage is already parsed by WebSocketService.parseAgentMessageStreaming()
+            // It has structure: {type, agent, content, is_final, raw_data}
+            if (!streamingMessage) {
+                console.warn('Received null streaming message');
+                return;
+            }
+            
+            // Check if it has content property (parsed structure)
+            let content = '';
+            if (streamingMessage.content) {
+                content = streamingMessage.content;
+            } else if (streamingMessage.data && streamingMessage.data.content) {
+                // Fallback: check if content is nested in data
+                content = streamingMessage.data.content;
+            } else {
+                console.warn('Streaming message has no content:', {
+                    type: typeof streamingMessage,
+                    keys: Object.keys(streamingMessage || {}),
+                    streamingMessage
+                });
+                return;
+            }
+            
+            // Process the content
+            const line = PlanDataService.simplifyHumanClarification(content);
             setShowBufferingText(true);
             setStreamingMessageBuffer(prev => prev + line);
             //scrollToBottom();
@@ -483,6 +532,7 @@ const PlanPage: React.FC = () => {
             setTaskCompleted(true);
             setShowProcessingPlanSpinner(false);
             setShowBufferingText(false);
+            setWaitingForPlan(false);  // ✅ FIX: Hide "creating your plan" spinner
             
             console.log('🔍 After setting - taskCompleted should be true, spinner should be false');
             
@@ -541,6 +591,150 @@ const PlanPage: React.FC = () => {
         return () => unsubscribe();
     }, [scrollToBottom, planData, processAgentMessage, streamingMessageBuffer, setSelectedTeam]);
 
+    // WebsocketMessageType.COMPREHENSIVE_RESULTS_READY
+    useEffect(() => {
+        const unsubscribe = webSocketService.on(WebsocketMessageType.COMPREHENSIVE_RESULTS_READY, (comprehensiveResults: any) => {
+            console.log('📊 Comprehensive Results Ready received:', comprehensiveResults);
+            
+            if (!comprehensiveResults) {
+                console.warn('⚠️ Comprehensive results message missing data:', comprehensiveResults);
+                return;
+            }
+            
+            // Hide spinner when comprehensive results are ready
+            setShowProcessingPlanSpinner(false);
+            setShowBufferingText(false);
+            
+            // Add comprehensive results message to agent messages for display
+            const comprehensiveResultsMessage = {
+                agent: AgentType.GROUP_CHAT_MANAGER,
+                agent_type: AgentMessageType.AI_AGENT,
+                timestamp: new Date().toISOString(),
+                steps: [],
+                next_steps: [],
+                content: `📊 Comprehensive results compiled from all agents - ready for review`,
+                raw_data: JSON.stringify(comprehensiveResults) || '',
+            } as AgentMessageData;
+            
+            setAgentMessages(prev => [...prev, comprehensiveResultsMessage]);
+            scrollToBottom();
+        });
+
+        return () => unsubscribe();
+    }, [scrollToBottom]);
+
+    // WebsocketMessageType.FINAL_RESULTS_APPROVAL_REQUEST
+    useEffect(() => {
+        const unsubscribe = webSocketService.on(WebsocketMessageType.FINAL_RESULTS_APPROVAL_REQUEST, (approvalRequest: any) => {
+            console.log('📋 Final Results Approval Request received:', approvalRequest);
+            
+            if (!approvalRequest) {
+                console.warn('⚠️ Final results approval request missing data:', approvalRequest);
+                return;
+            }
+            
+            // Hide spinner when approval is requested
+            setShowProcessingPlanSpinner(false);
+            setShowBufferingText(false);
+            
+            // Add final approval request message to agent messages
+            const finalApprovalMessage = {
+                agent: AgentType.GROUP_CHAT_MANAGER,
+                agent_type: AgentMessageType.AI_AGENT,
+                timestamp: new Date().toISOString(),
+                steps: [],
+                next_steps: [],
+                content: `🎯 Final results ready for approval - please review the comprehensive analysis`,
+                raw_data: JSON.stringify(approvalRequest) || '',
+            } as AgentMessageData;
+            
+            setAgentMessages(prev => [...prev, finalApprovalMessage]);
+            
+            // TODO: Set state for final results approval UI
+            // This will be implemented when the ComprehensiveResultsDisplay component is integrated
+            
+            scrollToBottom();
+        });
+
+        return () => unsubscribe();
+    }, [scrollToBottom]);
+
+    // WebsocketMessageType.WORKFLOW_PROGRESS_UPDATE
+    useEffect(() => {
+        const unsubscribe = webSocketService.on(WebsocketMessageType.WORKFLOW_PROGRESS_UPDATE, (progressUpdate: any) => {
+            console.log('📈 Workflow Progress Update received:', progressUpdate);
+            
+            if (!progressUpdate) {
+                console.warn('⚠️ Workflow progress update missing data:', progressUpdate);
+                return;
+            }
+            
+            // Store the progress data for the progress display component
+            setWorkflowProgress(progressUpdate);
+            
+            // Update UI state based on the progress update
+            const { current_stage, progress_percentage, current_agent, completed_agents, pending_agents } = progressUpdate;
+            
+            // Show appropriate spinner state based on current stage
+            if (current_stage === 'completed') {
+                setShowProcessingPlanSpinner(false);
+                setTaskCompleted(true);
+                // Clear progress display when completed
+                setTimeout(() => setWorkflowProgress(null), 3000);
+            } else if (current_stage !== 'plan_approval' && current_stage !== 'final_approval') {
+                // Show spinner for execution stages, but not for approval stages
+                setShowProcessingPlanSpinner(true);
+            }
+            
+            // Optional: Add a simplified progress message to chat (less verbose than before)
+            if (current_stage === 'completed' || (progress_percentage % 25 === 0 && progress_percentage > 0)) {
+                const progressMessage = {
+                    agent: AgentType.GROUP_CHAT_MANAGER,
+                    agent_type: AgentMessageType.AI_AGENT,
+                    timestamp: new Date().toISOString(),
+                    steps: [],
+                    next_steps: [],
+                    content: `📈 ${current_stage === 'completed' ? 'Workflow completed!' : `Progress: ${Math.round(progress_percentage)}% complete`}`,
+                    raw_data: JSON.stringify(progressUpdate) || '',
+                } as AgentMessageData;
+                
+                setAgentMessages(prev => [...prev, progressMessage]);
+                scrollToBottom();
+            }
+        });
+
+        return () => unsubscribe();
+    }, [scrollToBottom]);
+
+    // WebSocket error handling
+    useEffect(() => {
+        const unsubscribe = webSocketService.on('workflow_error', (errorMessage: any) => {
+            console.log('❌ Workflow Error received:', errorMessage);
+            
+            if (!errorMessage) {
+                console.warn('⚠️ Workflow error message missing data:', errorMessage);
+                return;
+            }
+            
+            // Hide all spinners and progress indicators
+            setShowProcessingPlanSpinner(false);
+            setShowBufferingText(false);
+            setWaitingForPlan(false);
+            setWorkflowProgress(null);
+            
+            // Set error state
+            const errorData = errorMessage.data || errorMessage;
+            setWorkflowError({
+                title: errorData.title || 'Workflow Error',
+                message: errorData.message || 'An unexpected error occurred during workflow execution. Please start a new task.'
+            });
+            
+            console.log('❌ Workflow error state set:', errorData);
+        });
+
+        return () => unsubscribe();
+    }, []);
+
     //WebsocketMessageType.AGENT_MESSAGE
     useEffect(() => {
         const unsubscribe = webSocketService.on(WebsocketMessageType.AGENT_MESSAGE, (agentMessage: any) => {
@@ -549,8 +743,36 @@ const PlanPage: React.FC = () => {
             console.log('📋 Clarification message pending:', !!clarificationMessage);
             console.log('📋 Task completed status:', taskCompleted);
             
-            const agentMessageData = agentMessage.data as AgentMessageData;
-            if (agentMessageData) {
+            // The parsed agent message might be wrapped in a data property or be direct
+            let agentMessageData: AgentMessageData | null;
+            
+            if (agentMessage && agentMessage.data && (agentMessage.data.agent || agentMessage.data.agent_name)) {
+                // Wrapped structure: { data: { agent: "...", content: "..." } }
+                // Map agent_name to agent for consistency
+                const data = agentMessage.data;
+                agentMessageData = {
+                    ...data,
+                    agent: data.agent || data.agent_name || 'Unknown'
+                } as AgentMessageData;
+            } else if (agentMessage && (agentMessage.agent || agentMessage.agent_name)) {
+                // Direct structure: { agent: "...", content: "..." }
+                // Map agent_name to agent for consistency
+                agentMessageData = {
+                    ...agentMessage,
+                    agent: agentMessage.agent || agentMessage.agent_name || 'Unknown'
+                } as AgentMessageData;
+            } else {
+                agentMessageData = null;
+            }
+            
+            console.log('🔍 Debug agent message parsing:', {
+                hasContent: !!agentMessageData?.content,
+                contentLength: agentMessageData?.content?.length || 0,
+                agent: agentMessageData?.agent,
+                type: typeof agentMessageData
+            });
+            
+            if (agentMessageData && agentMessageData.content) {
                 console.log('✅ Adding agent message to state:', agentMessageData.agent);
                 
                 agentMessageData.content = PlanDataService.simplifyHumanClarification(agentMessageData?.content);
@@ -608,7 +830,7 @@ const PlanPage: React.FC = () => {
                 scrollToBottom();
                 processAgentMessage(agentMessageData, planData);
             } else {
-                console.warn('⚠️ No agent message data found');
+                console.warn('⚠️ No agent message data found or missing content');
             }
         });
 
@@ -1206,7 +1428,9 @@ const PlanPage: React.FC = () => {
                                 handleApprovePlan={handleApprovePlan}
                                 handleRejectPlan={handleRejectPlan}
                                 clarificationMessage={clarificationMessage}
-
+                                workflowProgress={workflowProgress}
+                                workflowError={workflowError}
+                                onRestartWorkflow={handleRestartWorkflow}
                             />
                         </>
                     )}

@@ -3,6 +3,7 @@ import {
     Button,
     Caption1,
     Title2,
+    Text,
 } from "@fluentui/react-components";
 
 import React, { useRef, useEffect, useState } from "react";
@@ -57,11 +58,16 @@ interface ExtendedQuickTask extends QuickTask {
 
 const HomeInput: React.FC<HomeInputProps> = ({
     selectedTeam,
+    comprehensiveTestingMode = false,
+    onWorkflowProgress,
+    validateQuery,
+    workflowConfig,
 }) => {
     const [submitting, setSubmitting] = useState<boolean>(false);
     const [input, setInput] = useState<string>("");
     const [raiError, setRAIError] = useState<RAIErrorData | null>(null);
     const [isUploadingFile, setIsUploadingFile] = useState<boolean>(false);
+    const [validationError, setValidationError] = useState<string>("");
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +84,7 @@ const HomeInput: React.FC<HomeInputProps> = ({
     const resetTextarea = () => {
         setInput("");
         setRAIError(null); // Clear any RAI errors
+        setValidationError(""); // Clear validation errors
         if (textareaRef.current) {
             textareaRef.current.style.height = "auto";
             textareaRef.current.focus();
@@ -90,56 +97,111 @@ const HomeInput: React.FC<HomeInputProps> = ({
     }, []);
 
     const handleSubmit = async () => {
-        if (input.trim()) {
-            setSubmitting(true);
-            setRAIError(null); // Clear any previous RAI errors
-            let id = showToast("Creating a plan", "progress");
+        if (!input.trim()) {
+            setValidationError("Please enter a query");
+            return;
+        }
 
-            try {
-                const response = await TaskService.createPlan(
-                    input.trim(),
-                    selectedTeam?.team_id
-                );
-                console.log("Plan created:", response);
-                setInput("");
-
-                if (textareaRef.current) {
-                    textareaRef.current.style.height = "auto";
-                }
-
-                if (response.plan_id && response.plan_id !== null) {
-                    showToast("Plan created!", "success");
-                    dismissToast(id);
-
-                    navigate(`/plan/${response.plan_id}`);
-                } else {
-                    showToast("Failed to create plan", "error");
-                    dismissToast(id);
-                }
-            } catch (error: any) {
-                console.log("Error creating plan:", error);
-                let errorMessage = "Unable to create plan. Please try again.";
-                dismissToast(id);
-                // Check if this is an RAI validation error
-                try {
-                    // errorDetail = JSON.parse(error);
-                    errorMessage = error?.message || errorMessage;
-                } catch (parseError) {
-                    console.error("Error parsing error detail:", parseError);
-                }
-
-
-                showToast(errorMessage, "error");
-            } finally {
-                setInput("");
-                setSubmitting(false);
+        // Validate query for multi-agent workflows
+        if (validateQuery) {
+            const validation = validateQuery(input.trim());
+            if (!validation.isValid) {
+                setValidationError(validation.message || "Invalid query");
+                showToast(validation.message || "Invalid query", "error");
+                return;
             }
+        }
+
+        setSubmitting(true);
+        setRAIError(null); // Clear any previous RAI errors
+        setValidationError(""); // Clear validation errors
+        
+        // Report workflow initiation
+        if (onWorkflowProgress) {
+            if (comprehensiveTestingMode) {
+                onWorkflowProgress("Initiating comprehensive multi-agent workflow...", true);
+            } else {
+                onWorkflowProgress("Creating plan...", true);
+            }
+        }
+
+        let id = showToast(
+            comprehensiveTestingMode 
+                ? "Initiating comprehensive workflow with multi-agent coordination" 
+                : "Creating a plan", 
+            "progress"
+        );
+
+        try {
+            const response = await TaskService.createPlan(
+                input.trim(),
+                selectedTeam?.team_id,
+                comprehensiveTestingMode ? {
+                    mode: workflowConfig?.mode || 'comprehensive',
+                    requiresPlanApproval: workflowConfig?.requiresPlanApproval || true,
+                    requiresFinalApproval: workflowConfig?.requiresFinalApproval || true,
+                    expectedAgents: workflowConfig?.expectedAgents || []
+                } : undefined
+            );
+            
+            console.log("Plan created:", response);
+            setInput("");
+
+            if (textareaRef.current) {
+                textareaRef.current.style.height = "auto";
+            }
+
+            if (response.plan_id && response.plan_id !== null) {
+                const successMessage = comprehensiveTestingMode 
+                    ? "Comprehensive workflow initiated! Proceeding to plan approval..." 
+                    : "Plan created!";
+                
+                showToast(successMessage, "success");
+                dismissToast(id);
+
+                // Report workflow progress
+                if (onWorkflowProgress) {
+                    if (comprehensiveTestingMode) {
+                        onWorkflowProgress("Plan created - awaiting approval", true);
+                    } else {
+                        onWorkflowProgress("", false);
+                    }
+                }
+
+                navigate(`/plan/${response.plan_id}`);
+            } else {
+                showToast("Failed to create plan", "error");
+                dismissToast(id);
+                if (onWorkflowProgress) {
+                    onWorkflowProgress("", false);
+                }
+            }
+        } catch (error: any) {
+            console.log("Error creating plan:", error);
+            let errorMessage = "Unable to create plan. Please try again.";
+            dismissToast(id);
+            
+            // Check if this is an RAI validation error
+            try {
+                errorMessage = error?.message || errorMessage;
+            } catch (parseError) {
+                console.error("Error parsing error detail:", parseError);
+            }
+
+            showToast(errorMessage, "error");
+            if (onWorkflowProgress) {
+                onWorkflowProgress("", false);
+            }
+        } finally {
+            setInput("");
+            setSubmitting(false);
         }
     };
 
     const handleQuickTaskClick = (task: ExtendedQuickTask) => {
         setInput(task.fullDescription);
         setRAIError(null); // Clear any RAI errors when selecting a quick task
+        setValidationError(""); // Clear validation errors
         if (textareaRef.current) {
             textareaRef.current.focus();
         }
@@ -148,6 +210,7 @@ const HomeInput: React.FC<HomeInputProps> = ({
     const handleFileContentExtracted = (content: string, filename: string) => {
         setInput(content);
         setRAIError(null);
+        setValidationError("");
         setIsUploadingFile(false);
         showToast(`File "${filename}" uploaded successfully`, "success");
         if (textareaRef.current) {
@@ -250,6 +313,40 @@ const HomeInput: React.FC<HomeInputProps> = ({
                 <div className="home-input-center-content">
                     <div className="home-input-title-wrapper">
                         <Title2>How can I help?</Title2>
+                        {comprehensiveTestingMode && selectedTeam && (
+                            <div style={{ 
+                                marginTop: '8px', 
+                                padding: '12px', 
+                                backgroundColor: '#f3f2f1', 
+                                borderRadius: '4px',
+                                border: '1px solid #e1dfdd'
+                            }}>
+                                <Text size={200} style={{ fontWeight: 600, color: '#323130' }}>
+                                    Comprehensive Testing Mode Active
+                                </Text>
+                                <br />
+                                <Text size={100} style={{ color: '#605e5c' }}>
+                                    Team: {selectedTeam.name} ({selectedTeam.agents?.length || 0} agents)
+                                </Text>
+                                <br />
+                                <Text size={100} style={{ color: '#605e5c' }}>
+                                    Workflow: Plan Approval → Multi-Agent Execution → Final Approval
+                                </Text>
+                            </div>
+                        )}
+                        {validationError && (
+                            <div style={{ 
+                                marginTop: '8px', 
+                                padding: '8px 12px', 
+                                backgroundColor: '#fef7f1', 
+                                borderRadius: '4px',
+                                border: '1px solid #f7630c'
+                            }}>
+                                <Text size={200} style={{ color: '#d13438' }}>
+                                    {validationError}
+                                </Text>
+                            </div>
+                        )}
                     </div>
 
                     {/* Show RAI error if present */}

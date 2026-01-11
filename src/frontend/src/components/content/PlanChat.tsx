@@ -1,33 +1,11 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
-import {
-  Button,
-  Body1,
-  Spinner,
-  Tag,
-  Textarea,
-} from "@fluentui/react-components";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import React from "react";
 import {
   CheckmarkRegular,
   DismissRegular,
-  SendRegular,
-  PersonRegular,
-  BotRegular,
 } from "@fluentui/react-icons";
 import { PlanChatProps, MPlanData } from "../../models/plan";
-import webSocketService from "../../services/WebSocketService";
-import { PlanDataService } from "../../services/PlanDataService";
-import { apiService } from "../../api/apiService";
-import { useNavigate } from "react-router-dom";
-import ChatInput from "../../coral/modules/ChatInput";
-import InlineToaster, {
-  useInlineToaster,
-} from "../toast/InlineToaster";
-import { AgentMessageData, WebsocketMessageType } from "@/models";
-import getUserPlan from "./streaming/StreamingUserPlan";
+import { AgentMessageData, WebsocketMessageType, WorkflowProgressUpdate } from "@/models";
 import renderUserPlanMessage from "./streaming/StreamingUserPlanMessage";
-import renderPlanResponse from "./streaming/StreamingPlanResponse";
 import { renderPlanExecutionMessage, renderThinkingState } from "./streaming/StreamingPlanState";
 import ContentNotFound from "../NotFound/ContentNotFound";
 import PlanChatBody from "./PlanChatBody";
@@ -35,6 +13,9 @@ import renderAgentMessages from "./streaming/StreamingAgentMessage";
 import StreamingBufferMessage from "./streaming/StreamingBufferMessage";
 import ClarificationUI from "./ClarificationUI";
 import PlanApprovalDisplay from "./PlanApprovalDisplay";
+import WorkflowProgressDisplay from "./WorkflowProgressDisplay";
+import ErrorDisplay from "./ErrorDisplay";
+import InlineToaster from "../toast/InlineToaster";
 
 interface SimplifiedPlanChatProps extends PlanChatProps {
   onPlanReceived?: (planData: MPlanData) => void;
@@ -51,7 +32,13 @@ interface SimplifiedPlanChatProps extends PlanChatProps {
   handleRejectPlan: () => Promise<void>;
   processingApproval: boolean;
   clarificationMessage?: any;
-
+  workflowProgress?: WorkflowProgressUpdate | null;
+  // Error handling props
+  workflowError?: {
+    title?: string;
+    message: string;
+  } | null;
+  onRestartWorkflow?: () => void;
 }
 
 const PlanChat: React.FC<SimplifiedPlanChatProps> = (props) => {
@@ -75,7 +62,10 @@ const PlanChat: React.FC<SimplifiedPlanChatProps> = (props) => {
     handleApprovePlan,
     handleRejectPlan,
     processingApproval,
-    clarificationMessage
+    clarificationMessage,
+    workflowProgress,
+    workflowError,
+    onRestartWorkflow
   } = props || {};
 
   if (!planData)
@@ -120,11 +110,30 @@ const PlanChat: React.FC<SimplifiedPlanChatProps> = (props) => {
           />
         )}
 
+        {/* Error Display - show when workflow encounters an error */}
+        {workflowError && onRestartWorkflow && (
+          <ErrorDisplay
+            title={workflowError.title}
+            message={workflowError.message}
+            onRestart={onRestartWorkflow}
+            isLoading={submittingChatDisableInput}
+          />
+        )}
+
+        {/* Workflow Progress Display - show when plan is approved and agents are executing */}
+        {workflowProgress && !clarificationMessage && !workflowError && (
+          <WorkflowProgressDisplay
+            progress={workflowProgress}
+            planData={planData}
+            planApprovalRequest={planApprovalRequest}
+          />
+        )}
+
         {/* All agent messages in chronological order */}
-        {renderAgentMessages(agentMessages)}
+        {!workflowError && renderAgentMessages(agentMessages)}
 
         {/* Clarification UI - shown when user needs to approve or revise */}
-        {clarificationMessage && (
+        {clarificationMessage && !workflowError && (
           <ClarificationUI
             agentResult={clarificationMessage.agent_result || ''}
             onApprove={() => OnChatSubmit('OK')}
@@ -133,9 +142,9 @@ const PlanChat: React.FC<SimplifiedPlanChatProps> = (props) => {
           />
         )}
 
-        {showProcessingPlanSpinner && renderPlanExecutionMessage()}
+        {!workflowError && showProcessingPlanSpinner && renderPlanExecutionMessage()}
         {/* Streaming plan updates */}
-        {showBufferingText && (
+        {!workflowError && showBufferingText && (
           <StreamingBufferMessage
             streamingMessageBuffer={streamingMessageBuffer}
             isStreaming={true}
@@ -143,15 +152,17 @@ const PlanChat: React.FC<SimplifiedPlanChatProps> = (props) => {
         )}
       </div>
 
-      {/* Chat Input - only show if no plan is waiting for approval */}
-      <PlanChatBody
-        planData={planData}
-        input={input}
-        setInput={setInput}
-        submittingChatDisableInput={submittingChatDisableInput}
-        OnChatSubmit={OnChatSubmit}
-        waitingForPlan={waitingForPlan}
-        loading={false} />
+      {/* Chat Input - only show if no plan is waiting for approval and no error */}
+      {!workflowError && (
+        <PlanChatBody
+          planData={planData}
+          input={input}
+          setInput={setInput}
+          submittingChatDisableInput={submittingChatDisableInput}
+          OnChatSubmit={OnChatSubmit}
+          waitingForPlan={waitingForPlan}
+          loading={false} />
+      )}
 
     </div>
   );

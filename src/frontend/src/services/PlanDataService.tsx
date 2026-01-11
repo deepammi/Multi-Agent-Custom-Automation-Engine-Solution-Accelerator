@@ -548,8 +548,27 @@ export class PlanDataService {
 
       // Unwrap wrapper - handle object format
       if (rawData && typeof rawData === 'object' && rawData.type === WebsocketMessageType.AGENT_MESSAGE) {
-        if (typeof rawData.data === 'object' && rawData.data.agent_name) {
-          // New format: { type: 'agent_message', data: { agent_name: '...', timestamp: 123, content: '...' } }
+        // Handle double-nested structure: { type: 'agent_message', data: { type: 'agent_message', data: { agent_name: '...' } } }
+        if (typeof rawData.data === 'object' && rawData.data.type === 'agent_message' && rawData.data.data && (rawData.data.data.agent_name || rawData.data.data.agent)) {
+          const data = rawData.data.data;
+          const content = data.content || '';
+          const timestamp = data.timestamp || new Date().toISOString();
+
+          // Parse the content for steps and next_steps (reuse existing logic)
+          const { steps, next_steps } = this.parseContentForStepsAndNextSteps(content);
+
+          return {
+            agent: data.agent_name || data.agent || 'UnknownAgent',
+            agent_type: AgentMessageType.AI_AGENT,
+            timestamp,
+            steps,
+            next_steps,
+            content,
+            raw_data: rawData
+          };
+        } else if (typeof rawData.data === 'object' && (rawData.data.agent_name || rawData.data.agent)) {
+          // Single-nested format: { type: 'agent_message', data: { agent_name: '...', timestamp: 123, content: '...' } }
+          // OR { type: 'agent_message', data: { agent: '...', timestamp: 123, content: '...' } }
           const data = rawData.data;
           const content = data.content || '';
           const timestamp = data.timestamp || new Date().toISOString();
@@ -558,7 +577,7 @@ export class PlanDataService {
           const { steps, next_steps } = this.parseContentForStepsAndNextSteps(content);
 
           return {
-            agent: data.agent_name || 'UnknownAgent',
+            agent: data.agent_name || data.agent || 'UnknownAgent',
             agent_type: AgentMessageType.AI_AGENT,
             timestamp,
             steps,
@@ -573,7 +592,7 @@ export class PlanDataService {
       }
 
       // Handle direct object format
-      if (rawData && typeof rawData === 'object' && rawData.agent_name) {
+      if (rawData && typeof rawData === 'object' && (rawData.agent_name || rawData.agent)) {
         const content = rawData.content || '';
         const timestamp = rawData.timestamp || new Date().toISOString();
 
@@ -581,7 +600,7 @@ export class PlanDataService {
         const { steps, next_steps } = this.parseContentForStepsAndNextSteps(content);
 
         return {
-          agent: rawData.agent_name || 'UnknownAgent',
+          agent: rawData.agent_name || rawData.agent || 'UnknownAgent',
           agent_type: AgentMessageType.AI_AGENT,
           timestamp,
           steps,
@@ -729,14 +748,35 @@ export class PlanDataService {
 
       // Unwrap wrapper - handle object format
       if (rawData && typeof rawData === 'object' && rawData.type === 'agent_message_streaming') {
-        if (typeof rawData.data === 'object' && rawData.data.agent_name) {
-          // New format: { type: 'agent_message_streaming', data: { agent_name: '...', content: '...', is_final: true } }
+        // Handle double-nested structure: { type: 'agent_message_streaming', data: { type: 'agent_message_streaming', data: { agent_name: '...' } } }
+        if (typeof rawData.data === 'object' && rawData.data.type === 'agent_message_streaming' && rawData.data.data && (rawData.data.data.agent_name || rawData.data.data.agent)) {
+          const data = rawData.data.data;
+          return {
+            type: WebsocketMessageType.AGENT_MESSAGE_STREAMING,
+            agent: data.agent_name || data.agent || 'UnknownAgent',
+            content: data.content || '',
+            is_final: Boolean(data.is_final || data.is_complete),
+            raw_data: rawData
+          };
+        } else if (typeof rawData.data === 'object' && rawData.data.data && (rawData.data.data.agent_name || rawData.data.data.agent)) {
+          // Handle case where outer type might be different but inner structure is correct
+          const data = rawData.data.data;
+          return {
+            type: WebsocketMessageType.AGENT_MESSAGE_STREAMING,
+            agent: data.agent_name || data.agent || 'UnknownAgent',
+            content: data.content || '',
+            is_final: Boolean(data.is_final || data.is_complete),
+            raw_data: rawData
+          };
+        } else if (typeof rawData.data === 'object' && (rawData.data.agent_name || rawData.data.agent)) {
+          // Single-nested format: { type: 'agent_message_streaming', data: { agent_name: '...', content: '...', is_final: true } }
+          // OR streaming format: { type: 'agent_message_streaming', data: { agent: '...', content: '...' } }
           const data = rawData.data;
           return {
             type: WebsocketMessageType.AGENT_MESSAGE_STREAMING,
-            agent: data.agent_name || 'UnknownAgent',
+            agent: data.agent_name || data.agent || 'UnknownAgent',
             content: data.content || '',
-            is_final: Boolean(data.is_final),
+            is_final: Boolean(data.is_final || data.is_complete),
             raw_data: rawData
           };
         } else if (typeof rawData.data === 'string') {
@@ -746,10 +786,10 @@ export class PlanDataService {
       }
 
       // Handle direct object format
-      if (rawData && typeof rawData === 'object' && rawData.agent_name) {
+      if (rawData && typeof rawData === 'object' && (rawData.agent_name || rawData.agent)) {
         return {
           type: WebsocketMessageType.AGENT_MESSAGE_STREAMING,
-          agent: rawData.agent_name || 'UnknownAgent',
+          agent: rawData.agent_name || rawData.agent || 'UnknownAgent',
           content: rawData.content || '',
           is_final: Boolean(rawData.is_final),
           raw_data: rawData

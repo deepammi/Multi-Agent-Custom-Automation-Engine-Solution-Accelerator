@@ -1,0 +1,567 @@
+"""AI-Driven Planner Service for intelligent agent sequence generation."""
+import logging
+import json
+import asyncio
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from langchain_core.messages import HumanMessage
+
+from ..services.llm_service import LLMService, LLMError
+from ..models.ai_planner import TaskAnalysis, AgentSequence, AIPlanningSummary
+
+logger = logging.getLogger(__name__)
+
+
+class AIPlanner:
+    """AI-Driven Planner for task analysis and agent sequence generation."""
+    
+    def __init__(self, llm_service: LLMService):
+        """Initialize AI Planner with LLM service."""
+        self.llm_service = llm_service
+        self.available_agents = [
+            "email", "crm", "invoice", "analysis"
+        ]
+        
+        # Agent capabilities mapping for better planning
+        self.agent_capabilities = {
+            "email": "Email search, retrieval, and analysis. Access to Gmail API for finding communications.",
+            "invoice": "Invoice processing, validation, accuracy checks, payment status, and vendor management via Bill.com integration.",
+            "crm": "CRM data access, customer information, sales records, and relationship management via Salesforce.",
+            "analysis": "Data analysis, reporting, insights generation, and business intelligence."
+        }
+    
+    async def analyze_task(self, task: str) -> TaskAnalysis:
+        """
+        Use GenAI to analyze task and determine requirements.
+        The prompt being sent to GenAI is created using _create_analysis_prompt() function below
+
+        Args:
+            task: Task description from user
+            
+        Returns:
+            TaskAnalysis: Structured analysis of the task
+            
+        Raises:
+            LLMError: If AI analysis fails
+        """
+        logger.info(f"🧠 Starting AI task analysis for task: {task[:100]}...")
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        # Check if mock mode is enabled
+        if self.llm_service.is_mock_mode():
+            logger.info("🎭 Using mock mode for task analysis")
+            return self._get_mock_analysis(task)
+        
+        # Create analysis prompt
+        analysis_prompt = self._create_analysis_prompt(task)
+        
+        try:
+            # Get LLM instance
+            llm = self.llm_service.get_llm_instance()
+            
+            # Call LLM for analysis
+            response = await llm.ainvoke([HumanMessage(content=analysis_prompt)])
+            
+            # Parse response
+            analysis_result = self._parse_analysis_response(response.content)
+            
+            duration = asyncio.get_event_loop().time() - start_time
+            
+            logger.info(
+                f"✅ Task analysis completed in {duration:.2f}s. "
+                f"Complexity: {analysis_result.complexity}, "
+                f"Confidence: {analysis_result.confidence_score:.2f}"
+            )
+            
+            return analysis_result
+            
+        except Exception as e:
+            duration = asyncio.get_event_loop().time() - start_time
+            logger.error(f"❌ Task analysis failed after {duration:.2f}s: {str(e)}")
+            raise LLMError(f"Task analysis failed: {str(e)}") from e
+    
+    async def generate_sequence(self, analysis: TaskAnalysis, task: str) -> AgentSequence:
+        """
+        Generate optimal agent sequence based on task analysis.
+        Main function in this file which generates order of exection of agents
+        
+        Args:
+            analysis: Task analysis results
+            task: Original task description
+            
+        Returns:
+            AgentSequence: Optimal sequence of agents with reasoning
+            
+        Raises:
+            LLMError: If sequence generation fails
+        """
+        logger.info(
+            f"🎯 Generating agent sequence for {analysis.complexity} complexity task "
+            f"requiring {len(analysis.required_systems)} systems"
+        )
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        # Check if mock mode is enabled
+        if self.llm_service.is_mock_mode():
+            logger.info("🎭 Using mock mode for sequence generation")
+            return self._get_mock_sequence(analysis, task)
+        
+        # Create sequence generation prompt
+        sequence_prompt = self._create_sequence_prompt(analysis, task)
+        
+        try:
+            # Get LLM instance
+            llm = self.llm_service.get_llm_instance()
+            
+            # Call LLM for sequence generation
+            response = await llm.ainvoke([HumanMessage(content=sequence_prompt)])
+            
+            # Parse response
+            sequence_result = self._parse_sequence_response(response.content, analysis)
+            
+            duration = asyncio.get_event_loop().time() - start_time
+            
+            logger.info(
+                f"✅ Agent sequence generated in {duration:.2f}s. "
+                f"Sequence: {' → '.join(sequence_result.agents)} "
+                f"(estimated {sequence_result.estimated_duration}s)"
+            )
+            
+            return sequence_result
+            
+        except Exception as e:
+            duration = asyncio.get_event_loop().time() - start_time
+            logger.error(f"❌ Sequence generation failed after {duration:.2f}s: {str(e)}")
+            raise LLMError(f"Sequence generation failed: {str(e)}") from e
+    
+    async def plan_workflow(self, task: str) -> AIPlanningSummary:
+        """
+        Complete AI planning workflow: analyze task and generate sequence.
+        (this is the main ENTRY POINT function from an external call)
+
+        Args:
+            task: Task description from user
+            
+        Returns:
+            AIPlanningSummary: Complete planning results with timing
+            
+        Raises:
+            LLMError: If planning fails
+        """
+        logger.info(f"🚀 Starting complete AI workflow planning for task")
+        
+        total_start_time = asyncio.get_event_loop().time()
+        
+        try:
+            # Step 1: Analyze task
+            analysis_start = asyncio.get_event_loop().time()
+            task_analysis = await self.analyze_task(task)
+            analysis_duration = asyncio.get_event_loop().time() - analysis_start
+            
+            # Step 2: Generate sequence
+            sequence_start = asyncio.get_event_loop().time()
+            agent_sequence = await self.generate_sequence(task_analysis, task)
+            sequence_duration = asyncio.get_event_loop().time() - sequence_start
+            
+            total_duration = asyncio.get_event_loop().time() - total_start_time
+            
+            # Create summary
+            summary = AIPlanningSummary(
+                task_description=task,
+                analysis_duration=analysis_duration,
+                sequence_generation_duration=sequence_duration,
+                total_duration=total_duration,
+                task_analysis=task_analysis,
+                agent_sequence=agent_sequence,
+                success=True
+            )
+            
+            logger.info(
+                f"🎉 AI workflow planning completed successfully in {total_duration:.2f}s. "
+                f"Generated {len(agent_sequence.agents)}-step workflow"
+            )
+            
+            return summary
+            
+        except Exception as e:
+            total_duration = asyncio.get_event_loop().time() - total_start_time
+            
+            logger.error(f"❌ AI workflow planning failed after {total_duration:.2f}s: {str(e)}")
+            
+            # Return failed summary
+            return AIPlanningSummary(
+                task_description=task,
+                analysis_duration=0.0,
+                sequence_generation_duration=0.0,
+                total_duration=total_duration,
+                task_analysis=TaskAnalysis(
+                    complexity="simple",
+                    required_systems=[],
+                    business_context="Failed to analyze",
+                    data_sources_needed=[],
+                    estimated_agents=[],
+                    confidence_score=0.0,
+                    reasoning="Analysis failed"
+                ),
+                agent_sequence=AgentSequence(
+                    agents=[],
+                    reasoning={},
+                    estimated_duration=0,
+                    complexity_score=0.0,
+                    task_analysis=TaskAnalysis(
+                        complexity="simple",
+                        required_systems=[],
+                        business_context="Failed",
+                        data_sources_needed=[],
+                        estimated_agents=[],
+                        confidence_score=0.0,
+                        reasoning="Failed"
+                    )
+                ),
+                success=False,
+                error_message=str(e)
+            )
+    
+    def _create_analysis_prompt(self, task: str) -> str:
+        """Create prompt for task analysis."""
+        return f"""
+        You are an AI business process analyst. Analyze the following task and provide a structured analysis.
+
+        TASK: {task}
+
+        AVAILABLE SYSTEMS:
+        - email: Gmail API access for email search and retrieval
+        - crm: Salesforce integration for customer data
+        - invoice: Bill.com integration for invoice processing and payment management
+        - analysis: Data analysis and reporting systems
+
+        AVAILABLE AGENTS:
+        {json.dumps(self.agent_capabilities, indent=2)}
+
+        Analyze this task and respond with a JSON object containing:
+        {{
+            "complexity": "simple|medium|complex",
+            "required_systems": ["system1", "system2", ...],
+            "business_context": "Brief description of business domain",
+            "data_sources_needed": ["source1", "source2", ...],
+            "estimated_agents": ["agent1", "agent2", ...],
+            "confidence_score": 0.0-1.0,
+            "reasoning": "Detailed explanation of your analysis"
+        }}
+
+        COMPLEXITY GUIDELINES:
+        - simple: Single system, straightforward data retrieval (1-2 agents)
+        - medium: Multiple systems, some analysis required (2-4 agents)
+        - complex: Multiple systems, complex analysis, cross-referencing (4+ agents)
+
+        Respond ONLY with valid JSON, no additional text.
+        """
+    
+    def _create_sequence_prompt(self, analysis: TaskAnalysis, task: str) -> str:
+        """Create prompt for agent sequence generation."""
+        return f"""
+        You are an AI workflow orchestrator. Based on the task analysis, generate an optimal sequence of agents.
+
+        ORIGINAL TASK: {task}
+
+        TASK ANALYSIS:
+        - Complexity: {analysis.complexity}
+        - Required Systems: {analysis.required_systems}
+        - Business Context: {analysis.business_context}
+        - Data Sources: {analysis.data_sources_needed}
+        - Estimated Agents: {analysis.estimated_agents}
+        - Confidence: {analysis.confidence_score}
+        - Reasoning: {analysis.reasoning}
+
+        AVAILABLE AGENTS:
+        {json.dumps(self.agent_capabilities, indent=2)}
+
+        SEQUENCING GUIDELINES:
+        1. Start with data gathering agents (email, crm)
+        2. Process data with specialized agents (invoice)
+        3. End with analysis agent for insights and reporting
+        4. Each agent should build on previous agent's work
+        5. Minimize redundant data collection
+        6. Consider dependencies between agents
+
+        COMMON PATTERNS:
+        - Email Analysis: email → analysis
+        - Invoice Investigation: email → invoice → analysis
+        - Customer Issue: email → crm → analysis
+        - Vendor Analysis: email → invoice → crm → analysis
+
+        Generate an optimal sequence and respond with JSON:
+        {{
+            "agents": ["agent1", "agent2", "agent3"],
+            "reasoning": {{
+                "agent1": "Why this agent is needed and what it contributes",
+                "agent2": "Why this agent is needed and what it contributes",
+                "agent3": "Why this agent is needed and what it contributes"
+            }},
+            "estimated_duration": 300,
+            "complexity_score": 0.0-1.0
+        }}
+
+        DURATION ESTIMATES:
+        - Simple agents (email, crm): 60-120 seconds
+        - Processing agents (invoice): 90-180 seconds  
+        - Analysis agents: 120-240 seconds
+
+        Respond ONLY with valid JSON, no additional text.
+        """
+    
+    def _parse_analysis_response(self, response: str) -> TaskAnalysis:
+        """Parse LLM response into TaskAnalysis object.
+        Check what is the TaskAnalysis object class defition ???"""
+
+        try:
+            # Clean response and extract JSON
+            response = response.strip()
+            if response.startswith("```json"):
+                response = response[7:]
+            if response.endswith("```"):
+                response = response[:-3]
+            
+            data = json.loads(response)
+            
+            # Validate required fields
+            required_fields = [
+                "complexity", "required_systems", "business_context",
+                "data_sources_needed", "estimated_agents", "confidence_score", "reasoning"
+            ]
+            
+            for field in required_fields:
+                if field not in data:
+                    raise ValueError(f"Missing required field: {field}")
+            
+            # Create TaskAnalysis object
+            return TaskAnalysis(**data)
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse analysis JSON: {e}")
+            logger.error(f"Response was: {response}")
+            raise ValueError(f"Invalid JSON response: {e}")
+        
+        except Exception as e:
+            logger.error(f"Failed to create TaskAnalysis: {e}")
+            raise ValueError(f"Invalid analysis data: {e}")
+    
+    def _parse_sequence_response(self, response: str, analysis: TaskAnalysis) -> AgentSequence:
+        """Parse LLM response into AgentSequence object."""
+        try:
+            # Clean response and extract JSON
+            response = response.strip()
+            if response.startswith("```json"):
+                response = response[7:]
+            if response.endswith("```"):
+                response = response[:-3]
+            
+            data = json.loads(response)
+            
+            # Validate required fields
+            required_fields = ["agents", "reasoning", "estimated_duration", "complexity_score"]
+            
+            for field in required_fields:
+                if field not in data:
+                    raise ValueError(f"Missing required field: {field}")
+            
+            # Validate agents are available
+            for agent in data["agents"]:
+                if agent not in self.available_agents:
+                    logger.warning(f"Unknown agent '{agent}' in sequence, but allowing it")
+            
+            # Create AgentSequence object
+            return AgentSequence(
+                agents=data["agents"],
+                reasoning=data["reasoning"],
+                estimated_duration=data["estimated_duration"],
+                complexity_score=data["complexity_score"],
+                task_analysis=analysis
+            )
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse sequence JSON: {e}")
+            logger.error(f"Response was: {response}")
+            raise ValueError(f"Invalid JSON response: {e}")
+        
+        except Exception as e:
+            logger.error(f"Failed to create AgentSequence: {e}")
+            raise ValueError(f"Invalid sequence data: {e}")
+    
+    def get_fallback_sequence(self, task: str) -> AgentSequence:
+        """
+        Generate fallback sequence when AI planning fails.
+        
+        Args:
+            task: Original task description
+            
+        Returns:
+            AgentSequence: Simple fallback sequence
+        """
+        logger.warning("🔄 Using fallback sequence generation due to AI failure")
+        
+        # Simple heuristic-based fallback
+        task_lower = task.lower()
+        
+        if any(word in task_lower for word in ["email", "gmail", "communication"]):
+            agents = ["gmail", "analysis"]
+            reasoning = {
+                "gmail": "Email search and retrieval based on task keywords",
+                "analysis": "Analyze and summarize email findings"
+            }
+        elif any(word in task_lower for word in ["invoice", "payment", "vendor"]):
+            agents = ["invoice", "analysis"]
+            reasoning = {
+                "invoice": "Process and validate invoice information",
+                "analysis": "Analyze invoice data and provide insights"
+            }
+        elif any(word in task_lower for word in ["customer", "crm", "sales"]):
+            agents = ["salesforce", "analysis"]
+            reasoning = {
+                "salesforce": "Retrieve customer and sales information",
+                "analysis": "Analyze customer data and provide insights"
+            }
+        else:
+            # Generic fallback
+            agents = ["analysis"]
+            reasoning = {
+                "analysis": "General analysis and processing of the task"
+            }
+        
+        # Create fallback analysis
+        fallback_analysis = TaskAnalysis(
+            complexity="simple",
+            required_systems=["general"],
+            business_context="Fallback analysis due to AI planning failure",
+            data_sources_needed=["general"],
+            estimated_agents=agents,
+            confidence_score=0.5,
+            reasoning="Fallback heuristic-based analysis"
+        )
+        
+        return AgentSequence(
+            agents=agents,
+            reasoning=reasoning,
+            estimated_duration=len(agents) * 120,  # 2 minutes per agent
+            complexity_score=0.3,  # Low complexity for fallback
+            task_analysis=fallback_analysis
+        )
+    
+    def _get_mock_analysis(self, task: str) -> TaskAnalysis:
+        """Generate mock task analysis for testing."""
+        task_lower = task.lower()
+        
+        # Force simple complexity and only email agent for this specific test
+        if "invoice number 1001" in task_lower and "acme marketing" in task_lower:
+            return TaskAnalysis(
+                complexity="simple",
+                required_systems=["email"],
+                business_context="Email search and analysis for specific invoice inquiry",
+                data_sources_needed=["email"],
+                estimated_agents=["email"],  # Only email agent
+                confidence_score=0.95,
+                reasoning="This is a specific email search task requiring only email access to find emails from Acme Marketing about Invoice 1001"
+            )
+        
+        # Original logic for other tasks
+        # Determine complexity based on keywords
+        if any(word in task_lower for word in ["complex", "investigate", "analyze", "multiple"]):
+            complexity = "complex"
+            confidence = 0.8
+        elif any(word in task_lower for word in ["review", "check", "process"]):
+            complexity = "medium"
+            confidence = 0.7
+        else:
+            complexity = "simple"
+            confidence = 0.9
+        
+        # Determine required systems
+        required_systems = []
+        if any(word in task_lower for word in ["email", "gmail"]):
+            required_systems.append("email")
+        if any(word in task_lower for word in ["invoice", "payment", "vendor"]):
+            required_systems.append("invoice")
+        if any(word in task_lower for word in ["customer", "crm", "sales"]):
+            required_systems.append("crm")
+        
+        if not required_systems:
+            required_systems = ["email"]  # Default to email
+        
+        # Determine estimated agents
+        estimated_agents = []
+        if "email" in required_systems:
+            estimated_agents.append("email")
+        if "invoice" in required_systems:
+            estimated_agents.append("invoice")
+        if "crm" in required_systems:
+            estimated_agents.append("crm")
+        
+        # Always add analysis at the end
+        if "analysis" not in estimated_agents:
+            estimated_agents.append("analysis")
+        
+        return TaskAnalysis(
+            complexity=complexity,
+            required_systems=required_systems,
+            business_context=f"Mock analysis for {complexity} task involving {', '.join(required_systems)}",
+            data_sources_needed=required_systems,
+            estimated_agents=estimated_agents,
+            confidence_score=confidence,
+            reasoning=f"Mock analysis determined this is a {complexity} task requiring {len(required_systems)} systems"
+        )
+    
+    def _get_mock_sequence(self, analysis: TaskAnalysis, task: str) -> AgentSequence:
+        """Generate mock agent sequence for testing."""
+        # For the specific Invoice 1001 test, use only email agent
+        task_lower = task.lower()
+        if "invoice number 1001" in task_lower and "acme marketing" in task_lower:
+            agents = ["email"]  # Only email agent
+            reasoning = {
+                "email": "Search email for emails from Acme Marketing with subject related to Invoice number 1001 over the last 2 months"
+            }
+            
+            return AgentSequence(
+                agents=agents,
+                reasoning=reasoning,
+                estimated_duration=120,  # 2 minutes for single agent
+                complexity_score=0.3,  # Simple task
+                task_analysis=analysis
+            )
+        
+        # Original logic for other tasks
+        # Use the estimated agents from analysis
+        agents = analysis.estimated_agents.copy()
+        
+        # Create reasoning for each agent
+        reasoning = {}
+        for agent in agents:
+            if agent == "email":
+                reasoning[agent] = "Search and retrieve relevant emails for the task"
+            elif agent == "invoice":
+                reasoning[agent] = "Process and validate invoice information"
+            elif agent == "crm":
+                reasoning[agent] = "Retrieve customer and sales data from CRM"
+            elif agent == "analysis":
+                reasoning[agent] = "Analyze collected data and generate insights"
+            else:
+                reasoning[agent] = f"Process data using {agent} capabilities"
+        
+        # Calculate estimated duration
+        base_duration = 60  # Base 60 seconds per agent
+        complexity_multiplier = {"simple": 1.0, "medium": 1.5, "complex": 2.0}
+        multiplier = complexity_multiplier.get(analysis.complexity, 1.0)
+        estimated_duration = int(len(agents) * base_duration * multiplier)
+        
+        # Calculate complexity score
+        complexity_scores = {"simple": 0.3, "medium": 0.6, "complex": 0.9}
+        complexity_score = complexity_scores.get(analysis.complexity, 0.5)
+        
+        return AgentSequence(
+            agents=agents,
+            reasoning=reasoning,
+            estimated_duration=estimated_duration,
+            complexity_score=complexity_score,
+            task_analysis=analysis
+        )

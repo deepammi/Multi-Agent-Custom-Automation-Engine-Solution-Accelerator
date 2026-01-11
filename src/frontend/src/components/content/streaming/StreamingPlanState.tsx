@@ -76,7 +76,7 @@ const renderPlanExecutionMessage = () => {
                     color: 'var(--colorNeutralForeground1)',
                     fontWeight: '500'
                 }}>
-                    Processing your plan and coordinating with AI agents...
+                    Agents are working on your request...
                 </span>
             </div>
         </div>

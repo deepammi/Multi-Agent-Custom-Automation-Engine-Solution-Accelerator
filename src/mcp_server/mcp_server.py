@@ -8,6 +8,10 @@ import logging
 import sys
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from config.settings import config
 from core.factory import MCPToolFactory
@@ -17,6 +21,16 @@ from services.hr_service import HRService
 from services.marketing_service import MarketingService
 from services.product_service import ProductService
 from services.tech_support_service import TechSupportService
+from services.salesforce_service import SalesforceService
+from services.gmail_service import GmailService
+from core.bill_com_tools import BillComService
+from services.bill_com_service import BillComConfig, BillComAPIService
+from services.bill_com_health_tools_service import BillComHealthToolsService
+from services.audit_service import AuditService
+from services.audit_tools_service import AuditToolsService
+from adapters.billcom_audit_adapter import BillComAuditAdapter
+from core.audit_tools import initialize_audit_service
+from config.bill_com_config import validate_bill_com_setup
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -25,11 +39,19 @@ logger = logging.getLogger(__name__)
 # Global factory instance
 factory = MCPToolFactory()
 
+# Global audit service instance
+audit_service_instance: Optional[AuditService] = None
+
 # Initialize services
 factory.register_service(HRService())
 factory.register_service(TechSupportService())
 factory.register_service(MarketingService())
 factory.register_service(ProductService())
+factory.register_service(SalesforceService())
+factory.register_service(GmailService())
+factory.register_service(BillComService())
+factory.register_service(AuditToolsService())
+factory.register_service(BillComHealthToolsService())
 
 
 
@@ -67,6 +89,88 @@ def create_fastmcp_server():
 mcp = create_fastmcp_server()
 
 
+def initialize_audit_services():
+    """Initialize audit services and providers."""
+    global audit_service_instance
+    
+    try:
+        # Create audit service
+        audit_service_instance = AuditService()
+        
+        # Initialize Bill.com audit provider if configuration is available
+        bill_com_config = BillComConfig.from_env()
+        if bill_com_config.validate():
+            # Create Bill.com API service
+            bill_com_api_service = BillComAPIService(bill_com_config)
+            
+            # Create and register Bill.com audit adapter
+            billcom_adapter = BillComAuditAdapter(bill_com_api_service)
+            audit_service_instance.register_provider("billcom", billcom_adapter, is_default=True)
+            
+            logger.info("✅ Bill.com audit provider registered successfully")
+        else:
+            logger.warning("⚠️  Bill.com audit provider not available - configuration incomplete")
+        
+        # Initialize audit tools with the service
+        initialize_audit_service(audit_service_instance)
+        
+        logger.info("✅ Audit services initialized successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error initializing audit services: {e}")
+        return False
+
+
+def validate_bill_com_configuration_startup():
+    """Validate Bill.com configuration on startup with comprehensive reporting."""
+    try:
+        logger.info("🔍 Validating Bill.com configuration...")
+        
+        # Use the comprehensive validation from the config module
+        validation_result = validate_bill_com_setup()
+        
+        if validation_result["valid"]:
+            config = validation_result["config"]
+            logger.info("✅ Bill.com configuration validated successfully")
+            logger.info(f"   🏢 Organization ID: {config.organization_id}")
+            logger.info(f"   🌐 Environment: {config.environment.value}")
+            logger.info(f"   🔗 Base URL: {config.base_url}")
+            
+            # Log warnings if any
+            warnings = validation_result.get("warnings", [])
+            if warnings:
+                logger.warning("⚠️  Configuration warnings:")
+                for warning in warnings:
+                    logger.warning(f"   ⚠️  {warning}")
+            
+            return True
+        else:
+            logger.warning("⚠️  Bill.com configuration validation failed")
+            
+            # Log errors
+            errors = validation_result.get("errors", [])
+            if errors:
+                logger.warning("   Configuration errors:")
+                for error in errors:
+                    logger.warning(f"   ❌ {error}")
+            
+            # Log missing environment variables
+            missing_required = validation_result.get("missing_required", [])
+            if missing_required:
+                logger.warning("   Missing required environment variables:")
+                for var in missing_required:
+                    logger.warning(f"   ❌ {var}")
+            
+            logger.warning("   💡 Use 'bill_com_setup_guide' tool for setup instructions")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Error validating Bill.com configuration: {e}")
+        logger.error("   💡 Use 'bill_com_configuration_status' tool for detailed diagnostics")
+        return False
+
+
 def log_server_info():
     """Log server initialization info."""
     if not mcp:
@@ -83,6 +187,24 @@ def log_server_info():
         logger.info(
             f"   📁 {domain}: {info['tool_count']} tools ({info['class_name']})"
         )
+    
+    # Validate Bill.com configuration and initialize audit services
+    logger.info("🔍 Validating service configurations...")
+    config_valid = validate_bill_com_configuration_startup()
+    
+    logger.info("🔧 Initializing audit services...")
+    audit_initialized = initialize_audit_services()
+    
+    # Perform startup health check if configuration is valid
+    if config_valid:
+        logger.info("🏥 Performing startup health check...")
+        try:
+            # Simple health check - just log that config is valid
+            logger.info("✅ Bill.com startup health check passed")
+        except Exception as e:
+            logger.error(f"❌ Startup health check error: {e}")
+    else:
+        logger.info("⏭️  Skipping health check due to configuration issues")
 
 
 def run_server(

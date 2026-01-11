@@ -125,16 +125,26 @@ class MessageRepository:
     
     @staticmethod
     async def get_by_plan_id(plan_id: str) -> List[AgentMessage]:
-        """Get all messages for a plan."""
+        """
+        Get all messages for a plan in chronological order.
+        
+        Args:
+            plan_id: Plan identifier
+            
+        Returns:
+            List of AgentMessage objects ordered by timestamp (chronological)
+        """
         db = MongoDB.get_database()
         collection = db["messages"]
         
+        # Use the plan_id_timestamp_idx index for efficient chronological retrieval
         cursor = collection.find({"plan_id": plan_id}).sort("timestamp", 1)
         
         messages = []
         async for message_dict in cursor:
             messages.append(AgentMessage(**message_dict))
         
+        logger.debug(f"📖 Retrieved {len(messages)} messages for plan {plan_id} in chronological order")
         return messages
 
 

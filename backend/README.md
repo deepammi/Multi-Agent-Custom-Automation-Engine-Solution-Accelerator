@@ -1,136 +1,175 @@
-# MACAE LangGraph Backend
+# Multi-Agent Custom Automation Engine - Backend
 
-Multi-Agent Custom Automation Engine with LangGraph orchestration.
+This is the backend service for the Multi-Agent Custom Automation Engine (MACAE), built with FastAPI and LangGraph for multi-agent workflow orchestration.
 
-## Phase 1: Foundation Setup
+## Architecture
+
+- **Framework**: FastAPI for REST API and WebSocket endpoints
+- **Agent Orchestration**: LangGraph multi-agent collaboration pattern
+- **Database**: MongoDB for document storage (plans, messages, teams, sessions)
+- **Real-time Communication**: WebSocket for streaming agent responses
+- **LLM Provider**: Configurable (Gemini, OpenAI, Anthropic, Ollama)
+- **Tool Integration**: FastMCP server for external service integration
+
+## Directory Structure
+
+```
+backend/
+├── app/                          # Core application code
+│   ├── api/                      # REST API endpoints
+│   ├── agents/                   # Agent implementations
+│   ├── services/                 # Business logic services
+│   ├── models/                   # Data models
+│   └── db/                       # Database layer
+├── tests/                        # Organized test files
+│   ├── unit/                     # Unit tests
+│   ├── integration/              # Integration tests
+│   ├── e2e/                      # End-to-end tests
+│   └── property/                 # Property-based tests
+├── scripts/                      # Utility scripts
+│   ├── setup/                    # Environment setup
+│   ├── debug/                    # Debug utilities
+│   ├── deployment/               # Deployment scripts
+│   └── maintenance/              # Maintenance tools
+├── config/                       # Configuration files
+├── docs/                         # Documentation
+└── temp/                         # Temporary files (not committed)
+```
+
+## Quick Start
 
 ### Prerequisites
+
 - Python 3.9+
-- Docker (for MongoDB)
+- MongoDB
+- Environment variables configured (see `.env.example`)
 
-### Setup Instructions
+### Installation
 
-1. **Start MongoDB**:
-```bash
-cd backend
-docker-compose up -d mongodb
-```
-
-2. **Create virtual environment**:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies**:
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
-pip install httpx  # For testing
-pip install -U langgraph  # LangGraph framework
-pip install websockets  # For WebSocket testing
-npm install -g wscat  # Optional: WebSocket CLI tool
 ```
 
-4. **Create .env file**:
+2. Set up environment variables:
 ```bash
 cp .env.example .env
+# Edit .env with your configuration
 ```
 
-5. **Run Phase 1 validation tests**:
+3. Start MongoDB (if running locally):
 ```bash
-python test_phase1.py
+mongod
 ```
 
-6. **Start the backend server**:
+4. Start the backend server:
 ```bash
-python -m app.main
-# Or use uvicorn directly:
-uvicorn app.main:app --reload
+./scripts/deployment/start_backend.sh
 ```
 
-7. **Test health endpoint**:
+The API will be available at `http://localhost:8000`
+
+## Development
+
+### Running Tests
+
 ```bash
-curl http://localhost:8000/health
+# Run all tests
+python -m pytest tests/
+
+# Run specific test categories
+python -m pytest tests/unit/          # Unit tests
+python -m pytest tests/integration/   # Integration tests
+python -m pytest tests/e2e/          # End-to-end tests
 ```
 
-### Expected Output
+### Environment Setup
 
-Health check should return:
-```json
-{
-  "status": "healthy",
-  "service": "macae-langgraph-backend",
-  "version": "0.1.0"
-}
-```
+Use the setup scripts to configure your development environment:
 
-## Current Status
-
-✅ Phase 1: Foundation Setup & Validation - COMPLETE
-- Backend project structure created
-- MongoDB connectivity working
-- Basic FastAPI app with health check
-- CRUD operations validated
-
-✅ Phase 2: Data Models & Basic API - COMPLETE
-- Pydantic models for Plan, Step, AgentMessage, Team
-- Database repositories for plans and messages
-- POST /api/v3/process_request endpoint
-- GET /api/v3/plans endpoint
-- GET /api/v3/plan endpoint
-
-✅ Phase 3: Simple LangGraph Agent - COMPLETE
-- AgentState TypedDict for workflow state
-- Planner agent node with hardcoded responses
-- LangGraph workflow with entry point and end
-- AgentService for orchestration
-- Background task execution
-- Message storage in MongoDB
-- Plan status updates (pending → in_progress → completed)
-
-✅ Phase 4: WebSocket Streaming (Simplified) - COMPLETE
-- WebSocketManager for connection tracking
-- WebSocket endpoint at /api/v3/socket/{plan_id}
-- Real-time agent_message streaming
-- Final_result_message on completion
-- Multiple concurrent connections support
-- Graceful connection cleanup
-- Integration with AgentService
-
-✅ Phase 5: Multi-Agent Collaboration - COMPLETE
-- Supervisor router for agent selection
-- Invoice Agent (invoice management tasks)
-- Closing Agent (closing process automation)
-- Audit Agent (audit automation tasks)
-- Conditional routing based on task keywords
-- Multi-agent message streaming via WebSocket
-- Sequential agent execution (Planner → Supervisor → Specialized Agent)
-
-✅ Phase 6: Human-in-the-Loop (Basic) - COMPLETE
-- Approval checkpoint node with LangGraph interrupt
-- POST /api/v3/plan_approval endpoint
-- plan_approval_request WebSocket message
-- Execution pause and resume with checkpointing
-- Approval/rejection handling
-- Plan status updates (pending_approval → completed/rejected)
-- Thread config storage for resuming execution
-
-### Phase 6 Testing
-
-1. **Start the backend** (in one terminal):
 ```bash
-python -m app.main
+# Set up MCP servers
+python scripts/setup/setup_mcp_environment.py
+
+# Configure LLM provider
+python scripts/setup/setup_gemini.py
+
+# Set up Gmail OAuth (if using Gmail integration)
+python scripts/setup/setup_gmail_oauth.py
 ```
 
-2. **Run Phase 6 tests** (in another terminal):
+### Debug Tools
+
+Debug utilities are available in `scripts/debug/`:
+
 ```bash
-python test_phase6.py
+# Check database connectivity
+python scripts/debug/debug_database.py
+
+# Validate MCP configuration
+python scripts/debug/validate_mcp_config.py
+
+# Debug WebSocket flow
+python scripts/debug/debug_websocket_flow.py
 ```
 
-## Prototype Complete!
+## API Documentation
 
-All 6 phases of the prototype are now complete. The backend provides:
-- Multi-agent collaboration with LangGraph
-- Real-time WebSocket streaming
-- Human-in-the-loop approval flow
-- Full API compatibility with the MACAE frontend
+Once the server is running, visit:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+## Configuration
+
+### Environment Variables
+
+Key environment variables (see `.env.example` for complete list):
+
+- `LLM_PROVIDER`: LLM provider (gemini, openai, anthropic, ollama)
+- `MONGODB_URL`: MongoDB connection string
+- `GOOGLE_API_KEY`: Google API key (for Gemini)
+- `OPENAI_API_KEY`: OpenAI API key
+- `ANTHROPIC_API_KEY`: Anthropic API key
+
+### MCP Configuration
+
+MCP (Model Context Protocol) servers are configured in `config/mcp_config.json`. See the MCP documentation for details on adding new tools and services.
+
+## Deployment
+
+### Docker
+
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
+```
+
+### Production
+
+Use the deployment scripts:
+
+```bash
+# Start full system (backend + MCP servers)
+./scripts/deployment/start_full_system.sh
+
+# Stop system
+./scripts/deployment/stop_full_system.sh
+```
+
+## Contributing
+
+1. Follow the existing code structure
+2. Add tests for new functionality
+3. Use the debug tools for troubleshooting
+4. Update documentation as needed
+
+## Troubleshooting
+
+Common issues and solutions:
+
+1. **MongoDB Connection Issues**: Check `MONGODB_URL` in `.env`
+2. **LLM Provider Errors**: Verify API keys and provider configuration
+3. **MCP Server Issues**: Use `scripts/debug/validate_mcp_config.py`
+4. **WebSocket Problems**: Check `scripts/debug/debug_websocket_flow.py`
+
+For more detailed troubleshooting, see the debug scripts in `scripts/debug/`.

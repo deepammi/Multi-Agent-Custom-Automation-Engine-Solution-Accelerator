@@ -152,3 +152,68 @@ export interface ParsedUserClarification {
     request_id: string;
     agent_result?: string;
 }
+
+// New interfaces for comprehensive multi-agent workflow
+
+export interface AgentResult {
+    status: 'completed' | 'error';
+    result: string | object;
+    metadata: {
+        service_used: string;
+        data_quality: 'high' | 'medium' | 'low';
+        execution_time: number;
+        // Additional metadata fields for analysis agent
+        analysis_length?: number;
+        correlation_score?: number;
+        llm_used?: string;
+    };
+}
+
+export interface ComprehensiveResultsMessage {
+    plan_id: string;
+    results: {
+        gmail?: AgentResult;
+        accounts_payable?: AgentResult;
+        crm?: AgentResult;
+        analysis?: AgentResult;
+    };
+    correlations: {
+        cross_references: number;
+        data_consistency: number;
+        vendor_mentions: number;
+        quality_score: number;
+    };
+    executive_summary: string;
+    recommendations: string[];
+    timestamp: string;
+}
+
+export interface FinalResultsApprovalRequest {
+    plan_id: string;
+    comprehensive_results: ComprehensiveResultsMessage;
+    question: string;
+    revision_options: {
+        full_replan: boolean;
+        specific_agents: string[];
+        analysis_only: boolean;
+    };
+}
+
+export interface FinalResultsApprovalResponse {
+    plan_id: string;
+    approved: boolean;
+    revision_type: 'none' | 'full_replan' | 'specific_agents' | 'analysis_only';
+    target_agents?: string[];
+    feedback?: string;
+    export_results?: boolean;
+}
+
+export interface WorkflowProgressUpdate {
+    plan_id: string;
+    current_stage: 'plan_creation' | 'plan_approval' | 'gmail_execution' | 'ap_execution' | 'crm_execution' | 'analysis_execution' | 'results_compilation' | 'final_approval' | 'completed';
+    progress_percentage: number;
+    current_agent?: string;
+    estimated_remaining?: number;
+    completed_agents: string[];
+    pending_agents: string[];
+}

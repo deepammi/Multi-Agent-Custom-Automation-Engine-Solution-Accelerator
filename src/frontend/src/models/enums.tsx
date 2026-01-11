@@ -252,7 +252,12 @@ export enum WebsocketMessageType {
     REPLAN_APPROVAL_RESPONSE = "replan_approval_response",
     USER_CLARIFICATION_REQUEST = "user_clarification_request",
     USER_CLARIFICATION_RESPONSE = "user_clarification_response",
-    FINAL_RESULT_MESSAGE = "final_result_message"
+    FINAL_RESULT_MESSAGE = "final_result_message",
+    // New message types for comprehensive multi-agent workflow
+    COMPREHENSIVE_RESULTS_READY = "comprehensive_results_ready",
+    FINAL_RESULTS_APPROVAL_REQUEST = "final_results_approval_request",
+    FINAL_RESULTS_APPROVAL_RESPONSE = "final_results_approval_response",
+    WORKFLOW_PROGRESS_UPDATE = "workflow_progress_update"
 }
 
 export enum AgentMessageType {

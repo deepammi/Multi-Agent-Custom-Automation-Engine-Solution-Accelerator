@@ -1,0 +1,70 @@
+{
+  "configuration": {
+    "status": "pass",
+    "details": {
+      "username": "ent.kgmc@gmail.com",
+      "organization_id": "00802SHQTTGEIRXVek81",
+      "environment": "BillComEnvironment.SANDBOX",
+      "base_url": "https://gateway.stage.bill.com",
+      "timeout": 30,
+      "max_retries": 3
+    }
+  },
+  "connectivity": {
+    "status": "pass",
+    "details": {
+      "base_url": "https://gateway.stage.bill.com",
+      "response_time_ms": 294.51800000000003,
+      "status_code": 403
+    }
+  },
+  "authentication": {
+    "status": "pass",
+    "details": {
+      "session_id": "!bU6CVRK...",
+      "organization_id": "00802SHQTTGEIRXVek81",
+      "user_id": "00602RXGDUVBLOUKvt7i",
+      "expires_at": "2025-12-13T16:16:54.172854+00:00",
+      "authentication_time_ms": 554.3501377105713
+    }
+  },
+  "mcp_tools": {
+    "status": "fail",
+    "details": {
+      "error": "Import error: No module named 'fastmcp'"
+    }
+  },
+  "agent_integration": {
+    "status": "pass",
+    "details": {
+      "invoice_agent": {
+        "status": "pass",
+        "response_time_ms": 34.90924835205078,
+        "mentions_billcom": true
+      },
+      "audit_agent": {
+        "status": "pass",
+        "response_length": 548
+      }
+    }
+  },
+  "performance": {
+    "status": "pass",
+    "details": {
+      "service_creation_avg_ms": 17.386198043823242,
+      "concurrent_operations": {
+        "total_tasks": 3,
+        "successful_tasks": 3,
+        "total_time_ms": 51.21421813964844
+      }
+    }
+  },
+  "overall": {
+    "status": "warning",
+    "summary": "5/6 test categories passed, 1 failed",
+    "total_time_seconds": 1.916499137878418,
+    "tests_passed": 5,
+    "tests_failed": 1,
+    "tests_total": 6
+  }
+}

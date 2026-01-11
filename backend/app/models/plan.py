@@ -88,6 +88,7 @@ class ProcessRequestInput(BaseModel):
     description: str
     session_id: Optional[str] = None
     team_id: Optional[str] = None
+    require_hitl: bool = True  # Whether to require human-in-the-loop approval
 
 
 class ProcessRequestResponse(BaseModel):

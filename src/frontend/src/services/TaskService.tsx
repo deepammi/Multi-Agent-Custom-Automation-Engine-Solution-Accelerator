@@ -178,11 +178,18 @@ export class TaskService {
    * Create a new plan with RAI validation
    * @param description Task description
    * @param teamId Optional team ID to use for this plan
+   * @param workflowOptions Optional workflow configuration for comprehensive testing
    * @returns Promise with the response containing plan ID and status
    */
   static async createPlan(
     description: string,
-    teamId?: string
+    teamId?: string,
+    workflowOptions?: {
+      mode: 'standard' | 'comprehensive';
+      requiresPlanApproval: boolean;
+      requiresFinalApproval: boolean;
+      expectedAgents: any[];
+    }
   ): Promise<InputTaskResponse> {
     const sessionId = this.generateSessionId();
 
@@ -190,6 +197,7 @@ export class TaskService {
       session_id: sessionId,
       description: description,
       team_id: teamId,
+      workflow_options: workflowOptions,
     };
 
     try {

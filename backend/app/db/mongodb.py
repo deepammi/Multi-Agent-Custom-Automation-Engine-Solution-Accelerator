@@ -57,3 +57,52 @@ class MongoDB:
         except Exception as e:
             logger.error(f"Database connection test failed: {e}")
             return False
+    
+    @classmethod
+    async def initialize_indexes(cls) -> bool:
+        """
+        Initialize database indexes for optimal performance.
+        
+        Returns:
+            True if indexes were created successfully, False otherwise
+        """
+        try:
+            db = cls.get_database()
+            
+            # Create indexes for messages collection
+            messages_collection = db["messages"]
+            
+            # Index for chronological ordering by plan_id and timestamp
+            await messages_collection.create_index([
+                ("plan_id", 1),
+                ("timestamp", 1)
+            ], name="plan_id_timestamp_idx")
+            
+            # Index for efficient plan_id queries
+            await messages_collection.create_index("plan_id", name="plan_id_idx")
+            
+            # Index for agent-based queries
+            await messages_collection.create_index([
+                ("plan_id", 1),
+                ("agent_name", 1),
+                ("timestamp", 1)
+            ], name="plan_agent_timestamp_idx")
+            
+            # Create indexes for plans collection
+            plans_collection = db["plans"]
+            
+            # Index for plan retrieval by session
+            await plans_collection.create_index([
+                ("session_id", 1),
+                ("created_at", -1)
+            ], name="session_created_idx")
+            
+            # Index for plan_id queries
+            await plans_collection.create_index("plan_id", name="plan_id_idx", unique=True)
+            
+            logger.info("✅ Database indexes initialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize database indexes: {e}")
+            return False

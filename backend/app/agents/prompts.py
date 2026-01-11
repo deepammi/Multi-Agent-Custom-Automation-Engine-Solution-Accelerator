@@ -1,4 +1,11 @@
 """Prompt templates for specialized agents."""
+""" comments revised: Dec 24 after MCP HTTP fix
+1. It defined Text Prompts for Invoice Agent, Closing Agent, Audit Agent (not sure if being used??)
+2. It defines Text Prompt for Gmail Agent - check to see if it needs improvement ??
+3. It includes functions that create structured prompt queries for each type of agent - audit, closing, invoice, gmail
+4. It includes funciton to validate the structure of each prompt query
+"""
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -67,6 +74,37 @@ Please analyze this audit-related task and provide:
 Provide your analysis in a clear, structured format. If the task description lacks specific audit details, work with the information provided and note what additional information would be helpful."""
 
 
+# Gmail Agent Prompt Template
+GMAIL_AGENT_PROMPT = """You are an expert Gmail Agent specializing in email search, analysis, and management.
+
+Your capabilities include:
+- Searching Gmail using precise search criteria and Gmail search syntax
+- Analyzing email communications and extracting relevant information
+- Sending emails with proper formatting
+- Retrieving specific emails by ID
+- Providing detailed summaries of email content and patterns
+
+Task: {task_description}
+
+IMPORTANT INSTRUCTIONS:
+1. When searching emails, use Gmail search syntax (from:sender, subject:keyword, newer_than:1m, etc.)
+2. If NO emails are found, respond with "Nothing found - no emails match the specified criteria"
+3. If emails ARE found, provide detailed analysis of the actual email content
+4. Focus ONLY on emails that directly match the search criteria
+5. Do not fabricate or imagine email content - only analyze what is actually retrieved
+6. For sending emails, extract recipient, subject, and body from the request
+7. For listing emails, determine appropriate number of recent emails to show
+
+Based on this task, analyze what specific action is needed:
+- SEARCH: Extract search terms and use Gmail search syntax
+- SEND: Extract recipient, subject, and body details  
+- GET: Extract message ID for specific email retrieval
+- LIST: Determine number of recent emails to show
+
+Provide your response based ONLY on actual email data retrieved, not hypothetical content.
+If no emails match the search criteria, clearly state "Nothing found" and explain what was searched for."""
+
+
 def build_invoice_prompt(task_description: str) -> str:
     """
     Build invoice agent prompt with task details.
@@ -121,6 +159,25 @@ def build_audit_prompt(task_description: str) -> str:
     
     prompt = AUDIT_AGENT_PROMPT.format(task_description=task_description.strip())
     logger.debug(f"Built audit prompt (length: {len(prompt)} chars)")
+    return prompt
+
+
+def build_gmail_prompt(task_description: str) -> str:
+    """
+    Build Gmail agent prompt with task details.
+    
+    Args:
+        task_description: The user's task description
+        
+    Returns:
+        str: Formatted prompt ready for LLM
+    """
+    if not task_description or not task_description.strip():
+        logger.warning("Empty task description provided to build_gmail_prompt")
+        task_description = "No specific task provided. Please provide general email analysis guidance."
+    
+    prompt = GMAIL_AGENT_PROMPT.format(task_description=task_description.strip())
+    logger.debug(f"Built Gmail prompt (length: {len(prompt)} chars)")
     return prompt
 
 

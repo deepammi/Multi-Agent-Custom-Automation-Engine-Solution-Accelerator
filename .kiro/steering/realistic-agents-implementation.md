@@ -403,10 +403,6 @@ def planner_node(state: AgentState) -> Dict[str, Any]:
 # Execute the appropriate specialized agent
 if next_agent == "invoice":
     result = invoice_agent_node(state)
-elif next_agent == "closing":
-    result = closing_agent_node(state)
-elif next_agent == "audit":
-    result = audit_agent_node(state)
 else:
     result = {"messages": ["No specialized agent selected"], "final_result": "Task completed"}
 ```
@@ -416,10 +412,6 @@ else:
 # Execute the appropriate specialized agent
 if next_agent == "invoice":
     result = invoice_agent_node(state)
-elif next_agent == "closing":
-    result = closing_agent_node(state)
-elif next_agent == "audit":
-    result = audit_agent_node(state)
 elif next_agent == "data_analyst":
     result = data_analyst_agent_node(state)
 else:
@@ -428,7 +420,7 @@ else:
 
 **Also update imports at top of file**:
 ```python
-from app.agents.nodes import planner_node, invoice_agent_node, closing_agent_node, audit_agent_node, data_analyst_agent_node
+from app.agents.nodes import planner_node, invoice_agent_node, data_analyst_agent_node
 ```
 
 ---

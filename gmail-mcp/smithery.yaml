@@ -1,0 +1,26 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: http
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    description: The CLIENT_ID, CLIENT_SECRET, and REFRESH_TOKEN are required for remote server usage.
+    required:
+      - CLIENT_ID
+      - CLIENT_SECRET
+      - REFRESH_TOKEN
+    properties:
+      CLIENT_ID:
+        type: string
+        description: "CLIENT_ID - OAuth2 client ID (required for remote server)"
+      CLIENT_SECRET:
+        type: string
+        description: "CLIENT_SECRET - OAuth2 client Secret (required for remote server)"
+      REFRESH_TOKEN:
+        type: string
+        description: "REFRESH_TOKEN - OAuth2 refresh token (required for remote server)"
+  exampleConfig:
+    CLIENT_ID: your_client_id_here
+    CLIENT_SECRET: your_client_secret_here
+    REFRESH_TOKEN: your_refresh_token_here

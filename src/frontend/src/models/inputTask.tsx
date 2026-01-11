@@ -8,6 +8,13 @@ export interface InputTask {
     description: string;
     /** MANDATORY team identifier to use for this plan */
     team_id?: string;
+    /** Optional workflow configuration for comprehensive testing */
+    workflow_options?: {
+        mode: 'standard' | 'comprehensive';
+        requiresPlanApproval: boolean;
+        requiresFinalApproval: boolean;
+        expectedAgents: any[];
+    };
 }
 
 /**

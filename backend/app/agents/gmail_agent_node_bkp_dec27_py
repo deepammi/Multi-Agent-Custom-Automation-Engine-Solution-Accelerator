@@ -1,0 +1,842 @@
+"""
+Gmail Agent Node for LangGraph workflows - UPDATED to use category-based Email Agent.
+Provides email functionality using the new Email Agent with proper MCP protocol.
+
+This file maintains backward compatibility while using the new category-based
+Email Agent internally for proper MCP protocol implementation.
+"""
+
+from typing import Dict, Any, List
+import logging
+import json
+import re
+from .email_agent import get_email_agent
+
+logger = logging.getLogger(__name__)
+
+class GmailAgentNode:
+    """
+    Gmail agent node for LangGraph workflows - UPDATED.
+    
+    This class now uses the category-based Email Agent internally
+    while maintaining backward compatibility with existing code.
+    """
+    
+    def __init__(self):
+        self.email_agent = get_email_agent()
+        self.service = 'gmail'  # Fixed to Gmail for backward compatibility
+        self.name = "gmail_agent"
+        
+        logger.info(
+            "GmailAgentNode initialized with category-based Email Agent",
+            extra={
+                "service": self.service,
+                "agent_type": "category_based"
+            }
+        )
+    
+    async def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Process Gmail-related tasks."""
+        try:
+            task = state.get("task", "")
+            user_request = state.get("user_request", "")
+            
+            # Determine the Gmail action based on the task or user request
+            action_result = await self._determine_and_execute_action(task, user_request, state)
+            
+            return {
+                **state,
+                "gmail_result": action_result,
+                "last_agent": self.name,
+                "messages": state.get("messages", []) + [{
+                    "role": "assistant",
+                    "content": f"Gmail Agent: {action_result}",
+                    "agent": self.name
+                }]
+            }
+            
+        except Exception as e:
+            logger.error(f"Gmail agent error: {e}")
+            error_message = f"Gmail agent encountered an error: {str(e)}"
+            return {
+                **state,
+                "gmail_result": error_message,
+                "last_agent": self.name,
+                "messages": state.get("messages", []) + [{
+                    "role": "assistant",
+                    "content": error_message,
+                    "agent": self.name
+                }]
+            }
+    
+    async def _determine_and_execute_action(self, task: str, user_request: str, state: Dict[str, Any]) -> str:
+        """Determine what Gmail action to take and execute it using actual email search first, then LLM analysis."""
+        combined_text = f"{task} {user_request}".strip()
+        
+        # First, try to execute actual email search to get real data
+        email_search_result = await self._execute_email_actions_if_needed(combined_text, state)
+        
+        # If we got actual email data, use it for LLM analysis
+        if email_search_result and email_search_result != "No specific email actions needed.":
+            # Import LLM service and prompt builder
+            from app.services.llm_service import LLMService
+            from app.agents.prompts import build_gmail_prompt
+            
+            # Check if mock mode is enabled
+            if LLMService.is_mock_mode():
+                logger.info("🎭 Using mock mode for Gmail Agent")
+                return LLMService.get_mock_response("Gmail", combined_text)
+            
+            try:
+                # Build prompt that includes the actual email search results
+                # ?? enhanced_prompt blindly combines system prompt+user query into combined_tet and sends to build_gmail_prompt()
+                # ...and pads it with email search results and some final instructions as shown below
+                enhanced_prompt = f"""
+                    {build_gmail_prompt(combined_text)}
+
+                    ACTUAL EMAIL SEARCH RESULTS:
+                    {email_search_result}
+
+                    Based on the ACTUAL email search results above, provide your analysis. If the search results show "Nothing found" or "No emails found", respond with "Nothing found - no emails match the specified criteria" and explain what was searched for. If emails were found, analyze the actual content provided.
+                    """
+                
+                # Get websocket manager for streaming if available
+                websocket_manager = state.get("websocket_manager")
+                plan_id = state.get("plan_id", "unknown")
+                
+                # Call LLM with streaming if websocket_manager is available
+                if websocket_manager:
+                    try:
+                        response = await LLMService.call_llm_streaming(
+                            prompt=enhanced_prompt,
+                            plan_id=plan_id,
+                            websocket_manager=websocket_manager,
+                            agent_name="Gmail"
+                        )
+                        return response
+                    except Exception as e:
+                        logger.error(f"LLM call failed: {e}")
+                        return f"Email search completed but LLM analysis failed: {str(e)}\n\nRaw search results:\n{email_search_result}"
+                else:
+                    # Fallback to just returning the search results
+                    logger.warning("No websocket_manager available, returning raw search results")
+                    return email_search_result
+                    
+            except Exception as e:
+                logger.error(f"Gmail agent LLM processing failed: {e}")
+                return f"Email search completed but analysis failed: {str(e)}\n\nRaw search results:\n{email_search_result}"
+        
+        # If no email actions were performed, fall back to LLM-only analysis
+        # ?? This should probably go - no need to do plain LLM analysis without email data - will lead to hallucination
+        else:
+            # Import LLM service and prompt builder
+            from app.services.llm_service import LLMService
+            from app.agents.prompts import build_gmail_prompt
+            
+            # Check if mock mode is enabled
+            if LLMService.is_mock_mode():
+                logger.info("🎭 Using mock mode for Gmail Agent")
+                return LLMService.get_mock_response("Gmail", combined_text)
+            
+            try:
+                # Build prompt for LLM analysis
+                prompt = build_gmail_prompt(combined_text)
+                
+                # Get websocket manager for streaming if available
+                websocket_manager = state.get("websocket_manager")
+                plan_id = state.get("plan_id", "unknown")
+                
+                # Call LLM with streaming if websocket_manager is available
+                if websocket_manager:
+                    try:
+                        response = await LLMService.call_llm_streaming(
+                            prompt=prompt,
+                            plan_id=plan_id,
+                            websocket_manager=websocket_manager,
+                            agent_name="Gmail"
+                        )
+                        return response
+                    except Exception as e:
+                        logger.error(f"LLM call failed: {e}")
+                        return (
+                            f"I apologize, but I encountered an error while analyzing your email request: {str(e)}\n\n"
+                            f"Please try again or enable mock mode (USE_MOCK_LLM=true) for testing."
+                        )
+                else:
+                    # Fallback to mock if no websocket manager
+                    logger.warning("No websocket_manager available, falling back to mock mode")
+                    return LLMService.get_mock_response("Gmail", combined_text)
+                    
+            except Exception as e:
+                logger.error(f"Gmail agent LLM processing failed: {e}")
+                return f"Email search completed but analysis failed: {str(e)}"
+    
+    async def _execute_email_actions_if_needed(self, combined_text: str, state: Dict[str, Any]) -> str:
+        """Execute specific email actions based on pattern matching (fallback method)."""
+        # Check for email reading requests
+        if any(keyword in combined_text for keyword in ["read emails", "check emails", "get emails", "list emails", "recent emails"]):
+            return await self._read_recent_emails(combined_text)
+        
+        # Check for email sending requests
+        elif any(keyword in combined_text for keyword in ["send email", "compose email", "email to", "send message"]):
+            return await self._send_email(combined_text, state)
+        
+        # Check for email search requests - expanded to catch our specific query
+        elif any(keyword in combined_text for keyword in ["search emails", "find emails", "look for emails", "invoice", "payment", "acme marketing", "summarize all emails", "emails from", "emails received"]):
+            return await self._search_emails_intelligent(combined_text)
+        
+        # Check for specific email requests
+        elif "get email" in combined_text or "show email" in combined_text:
+            return await self._get_specific_email(combined_text, state)
+        
+        # No specific actions needed
+        else:
+            return "No specific email actions needed."
+    
+    async def _read_recent_emails(self, request_text: str) -> str:
+        """Read recent emails using category-based Email Agent."""
+        try:
+            # Extract number of emails if specified
+            max_results = 10  # default
+            number_match = re.search(r'(\d+)', request_text)
+            if number_match:
+                max_results = min(int(number_match.group(1)), 50)  # cap at 50
+            
+            logger.info(
+                f"Reading {max_results} recent emails via Email Agent",
+                extra={
+                    "service": self.service,
+                    "max_results": max_results
+                }
+            )
+            
+            # Use category-based Email Agent with proper MCP protocol
+            messages_data = await self.email_agent.list_messages(
+                service=self.service,
+                max_results=max_results
+            )
+            
+            # Format the response for the user
+            return self._format_email_list_from_agent_result(messages_data)
+            
+        except Exception as e:
+            logger.error(f"Failed to read recent emails: {e}")
+            return f"Failed to read emails: {str(e)}"
+    
+    async def _send_email(self, request_text: str, state: Dict[str, Any]) -> str:
+        """Send an email using category-based Email Agent."""
+        try:
+            # Extract email details from request or state
+            to = self._extract_email_recipient(request_text, state)
+            subject = self._extract_email_subject(request_text, state)
+            body = self._extract_email_body(request_text, state)
+            
+            if not to:
+                return "Cannot send email: recipient address not specified. Please provide an email address."
+            
+            logger.info(
+                f"Sending email via Email Agent",
+                extra={
+                    "service": self.service,
+                    "to": to,
+                    "subject": subject
+                }
+            )
+            
+            # Use category-based Email Agent with proper MCP protocol
+            result_data = await self.email_agent.send_message(
+                to=to,
+                subject=subject,
+                body=body,
+                service=self.service
+            )
+            
+            return f"Email sent successfully to {to} with subject '{subject}'"
+            
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return f"Failed to send email: {str(e)}"
+    
+    async def _search_emails_intelligent(self, request_text: str) -> str:
+        """Intelligently search Gmail messages based on the request context."""
+        try:
+            # Extract search terms intelligently based on the request
+            search_query = self._build_intelligent_search_query(request_text)
+            
+            if not search_query:
+                return "Could not determine appropriate search terms from the request."
+            
+            logger.info(
+                f"Intelligent email search via Email Agent",
+                extra={
+                    "service": self.service,
+                    "query": search_query,
+                    "original_request": request_text[:100]
+                }
+            )
+            
+            # Use category-based Email Agent with proper MCP protocol
+            messages_data = await self.email_agent.search_messages(
+                query=search_query,
+                service=self.service,
+                max_results=15  # Increased for better coverage
+            )
+            
+            # DEBUG: Show raw unfiltered results from MCP server
+            print(f"\n🔍 DEBUG: Raw MCP Server Response")
+            print(f"=" * 60)
+            print(f"Search Query: {search_query}")
+            print(f"Raw Response Type: {type(messages_data)}")
+            
+            if isinstance(messages_data, dict):
+                print(f"Raw Response Keys: {list(messages_data.keys())}")
+                
+                # Check if this is a CallToolResult wrapped response
+                if 'result' in messages_data:
+                    result = messages_data['result']
+                    print(f"Result Type: {type(result)}")
+                    print(f"Result: {result}")
+                    
+                    # Try to extract the actual data
+                    if hasattr(result, 'data'):
+                        actual_data = result.data
+                        print(f"Actual Data: {actual_data}")
+                        messages_data = actual_data  # Use the actual data
+                    elif hasattr(result, 'structured_content'):
+                        actual_data = result.structured_content
+                        print(f"Structured Content: {actual_data}")
+                        messages_data = actual_data  # Use the structured content
+                
+                # Now check the messages
+                messages = messages_data.get("messages", [])
+                print(f"Messages Count: {len(messages)}")
+                
+                if messages:
+                    for i, msg in enumerate(messages[:3], 1):  # Show first 3 messages
+                        print(f"\nMessage {i} Raw Structure:")
+                        print(f"  Keys: {list(msg.keys()) if isinstance(msg, dict) else 'Not a dict'}")
+                        if isinstance(msg, dict):
+                            for msg_key, msg_value in msg.items():
+                                if isinstance(msg_value, str) and len(msg_value) > 100:
+                                    print(f"  {msg_key}: {msg_value[:100]}... [truncated]")
+                                elif isinstance(msg_value, (dict, list)):
+                                    print(f"  {msg_key}: {type(msg_value).__name__} with {len(msg_value)} items")
+                                else:
+                                    print(f"  {msg_key}: {msg_value}")
+                else:
+                    print("No messages found in response")
+                    
+                # Show other keys in the response
+                for key, value in messages_data.items():
+                    if key != "messages":
+                        if isinstance(value, str) and len(value) > 200:
+                            print(f"{key}: {value[:200]}... [truncated]")
+                        else:
+                            print(f"{key}: {value}")
+            else:
+                print(f"Raw Response: {str(messages_data)[:500]}...")
+            
+            print(f"=" * 60)
+            
+            # Check if any messages were found
+            messages = messages_data.get("messages", [])
+            if not messages:
+                return f"Nothing found. No emails matching search criteria: {search_query}\n\nRAW MCP RESPONSE:\n{str(messages_data)}"
+            
+            # Format detailed results with full email content
+            return self._format_detailed_email_results(
+                messages_data, 
+                f"Email search results for: {search_query}",
+                request_text
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to search emails intelligently: {e}")
+            return f"Failed to search emails: {str(e)}"
+    
+    def _build_intelligent_search_query(self, request_text: str) -> str:
+        """Build intelligent search query based on request context."""
+        request_lower = request_text.lower()
+        
+        print(f"\n🔍 DEBUG: Search Query Building")
+        print(f"=" * 50)
+        print(f"Original Request: {request_text}")
+        print(f"Request (lowercase): {request_lower}")
+        
+        # Extract specific terms from the request
+        search_terms = []
+        
+        # Look for invoice-related terms (broader patterns)
+        import re
+        print(f"Checking invoice patterns...")
+        
+        # Look for specific invoice numbers - be more precise
+        invoice_number_patterns = [
+            r'(?:invoice\s+(?:number\s+)?|INV[.-]?)([A-Z0-9-]+)',  # Matches "invoice number INV-1001" or "INV-1001"
+        ]
+        
+        for pattern in invoice_number_patterns:
+            matches = re.findall(pattern, request_text, re.IGNORECASE)
+            print(f"  Pattern '{pattern}' found: {matches}")
+            for match in matches:
+                # Only add if it looks like a real invoice number (not random words)
+                if re.match(r'^[A-Z0-9-]+$', match) and len(match) >= 3:
+                    search_terms.append(f"invoice {match}")
+                    search_terms.append(f"inv {match}")
+                    search_terms.append(match)  # Also search for the number alone
+        
+        # Look for general invoice terms
+        if "invoice" in request_lower:
+            print(f"  Found 'invoice' - adding invoice search terms")
+            search_terms.append("invoice")
+            # Only add subject:invoice if we don't have a more specific subject constraint
+            if "subject containing" not in request_lower and "subject related" not in request_lower:
+                search_terms.append("subject:invoice")
+        
+        # Look for company/vendor names - be more specific
+        print(f"Checking company patterns...")
+        if "acme marketing" in request_lower:
+            print(f"  Found 'acme marketing' - adding from:acme, from:marketing, acme marketing")
+            search_terms.append("from:acme")
+            search_terms.append("from:marketing")
+            search_terms.append("acme marketing")
+        elif "acme" in request_lower:
+            print(f"  Found 'acme' - adding from:acme, acme")
+            search_terms.append("from:acme")
+            search_terms.append("acme")
+        
+        # Add time constraint for various time periods
+        print(f"Checking time constraints...")
+        if "last 2 months" in request_lower or "2 months" in request_lower:
+            print(f"  Found '2 months' constraint - adding newer_than:2m")
+            search_terms.append("newer_than:2m")
+        elif "last 1 month" in request_lower or "1 month" in request_lower:
+            print(f"  Found '1 month' constraint - adding newer_than:1m")
+            search_terms.append("newer_than:1m")
+        elif "last month" in request_lower:
+            print(f"  Found 'last month' constraint - adding newer_than:1m")
+            search_terms.append("newer_than:1m")
+        elif "last week" in request_lower:
+            print(f"  Found 'last week' constraint - adding newer_than:7d")
+            search_terms.append("newer_than:7d")
+        
+        # Look for subject-related terms
+        if "subject containing" in request_lower or "subject related" in request_lower:
+            print(f"  Found subject constraint")
+            # Extract what should be in the subject - be more specific
+            subject_match = re.search(r'subject\s+containing\s+(?:the\s+word\s+)?([A-Z0-9-]+)', request_text, re.IGNORECASE)
+            if subject_match:
+                subject_term = subject_match.group(1).strip()
+                print(f"    Subject term: '{subject_term}'")
+                search_terms.append(f"subject:{subject_term}")
+            else:
+                # Try to extract invoice number from subject containing pattern
+                invoice_in_subject = re.search(r'subject\s+containing\s+.*?(INV[A-Z0-9-]*)', request_text, re.IGNORECASE)
+                if invoice_in_subject:
+                    subject_term = invoice_in_subject.group(1).strip()
+                    print(f"    Invoice in subject: '{subject_term}'")
+                    search_terms.append(f"subject:{subject_term}")
+                # Fallback: if we already have "invoice" in search terms, add subject:invoice
+                elif any("invoice" in term.lower() for term in search_terms):
+                    print(f"    Fallback: Adding subject:invoice")
+                    search_terms.append("subject:invoice")
+        
+        # Remove duplicates and build query
+        unique_terms = list(set(search_terms))
+        print(f"All search terms: {search_terms}")
+        print(f"Unique search terms: {unique_terms}")
+        
+        if unique_terms:
+            # Build Gmail search query - combine terms with spaces (Gmail AND logic)
+            final_query = ' '.join(unique_terms)
+            print(f"Final search query: '{final_query}'")
+            print(f"=" * 50)
+            return final_query
+        else:
+            # Fallback to extracting key words from the request
+            words = request_text.split()
+            important_words = [word for word in words if len(word) > 3 and word.lower() not in ['what', 'the', 'status', 'number', 'from', 'with', 'and', 'all', 'emails', 'received', 'over', 'last', 'subject', 'containing', 'word']]
+            fallback_query = ' '.join(important_words[:3]) if important_words else "invoice"
+            print(f"No specific terms found, using fallback: '{fallback_query}'")
+            print(f"=" * 50)
+            return fallback_query
+    
+    async def _get_specific_email(self, request_text: str, state: Dict[str, Any]) -> str:
+        """Get a specific email by ID using category-based Email Agent."""
+        try:
+            # Try to extract message ID from request or state
+            message_id = state.get("email_id") or self._extract_message_id(request_text)
+            
+            if not message_id:
+                return "Please specify the email ID to retrieve."
+            
+            logger.info(
+                f"Getting email via Email Agent",
+                extra={
+                    "service": self.service,
+                    "message_id": message_id
+                }
+            )
+            
+            # Use category-based Email Agent with proper MCP protocol
+            message_data = await self.email_agent.get_message(
+                message_id=message_id,
+                service=self.service
+            )
+            
+            return self._format_email_details_from_agent_result(message_data)
+            
+        except Exception as e:
+            logger.error(f"Failed to get specific email: {e}")
+            return f"Failed to get email: {str(e)}"
+    
+    def _format_detailed_email_results(self, data: Dict[str, Any], title: str, original_request: str) -> str:
+        """Format detailed email results showing full content of each email."""
+        try:
+            messages = data.get("messages", [])
+            
+            if not messages:
+                return f"{title}\n\nNo emails found matching the search criteria."
+            
+            formatted_output = [f"{title}"]
+            formatted_output.append(f"Original Request: {original_request}")
+            formatted_output.append(f"Found {len(messages)} email(s)")
+            formatted_output.append("=" * 80)
+            
+            for i, msg in enumerate(messages, 1):
+                formatted_output.append(f"\n📧 EMAIL {i} OF {len(messages)}")
+                formatted_output.append("-" * 50)
+                
+                # Extract basic info
+                message_id = msg.get("id", "Unknown ID")
+                thread_id = msg.get("threadId", "Unknown Thread")
+                snippet = msg.get("snippet", "No preview available")
+                
+                formatted_output.append(f"Message ID: {message_id}")
+                formatted_output.append(f"Thread ID: {thread_id}")
+                
+                # Extract headers if available
+                subject = "No subject"
+                sender = "Unknown sender"
+                date = "Unknown date"
+                to = "Unknown recipient"
+                
+                if "payload" in msg and "headers" in msg["payload"]:
+                    headers = msg["payload"]["headers"]
+                    for header in headers:
+                        header_name = header.get("name", "").lower()
+                        header_value = header.get("value", "")
+                        
+                        if header_name == "subject":
+                            subject = header_value
+                        elif header_name == "from":
+                            sender = header_value
+                        elif header_name == "date":
+                            date = header_value
+                        elif header_name == "to":
+                            to = header_value
+                
+                formatted_output.append(f"From: {sender}")
+                formatted_output.append(f"To: {to}")
+                formatted_output.append(f"Subject: {subject}")
+                formatted_output.append(f"Date: {date}")
+                formatted_output.append(f"Snippet: {snippet}")
+                
+                # Try to extract body content
+                body_text = self._extract_email_body_content(msg)
+                if body_text:
+                    formatted_output.append(f"\nFull Email Content:")
+                    formatted_output.append("-" * 30)
+                    formatted_output.append(body_text)
+                else:
+                    formatted_output.append(f"\nEmail Body: {snippet}")
+                
+                formatted_output.append("\n" + "=" * 80)
+            
+            # Add summary
+            formatted_output.append(f"\n📊 SEARCH SUMMARY:")
+            formatted_output.append(f"Total emails found: {len(messages)}")
+            formatted_output.append(f"Search completed successfully")
+            
+            return "\n".join(formatted_output)
+            
+        except Exception as e:
+            logger.error(f"Failed to format detailed email results: {e}")
+            return f"Retrieved {len(data.get('messages', []))} emails but failed to format them: {str(e)}"
+    
+    def _extract_email_body_content(self, message: Dict[str, Any]) -> str:
+        """Extract the full body content from an email message."""
+        try:
+            payload = message.get("payload", {})
+            
+            # Try to get body from parts
+            if "parts" in payload:
+                for part in payload["parts"]:
+                    if part.get("mimeType") == "text/plain":
+                        body_data = part.get("body", {}).get("data", "")
+                        if body_data:
+                            # Decode base64 if needed
+                            import base64
+                            try:
+                                decoded = base64.urlsafe_b64decode(body_data + "===").decode('utf-8')
+                                return decoded
+                            except:
+                                return body_data
+            
+            # Try to get body directly
+            body_data = payload.get("body", {}).get("data", "")
+            if body_data:
+                import base64
+                try:
+                    decoded = base64.urlsafe_b64decode(body_data + "===").decode('utf-8')
+                    return decoded
+                except:
+                    return body_data
+            
+            # Fallback to snippet
+            return message.get("snippet", "No body content available")
+            
+        except Exception as e:
+            logger.error(f"Failed to extract email body: {e}")
+            return "Failed to extract email body content"
+    
+    def _format_email_list_from_agent_result(self, data: Dict[str, Any], title: str = "Recent emails:") -> str:
+        """Format email list from Email Agent result for display."""
+        try:
+            messages = data.get("messages", [])
+            
+            if not messages:
+                return "No emails found."
+            
+            formatted_emails = [title]
+            for i, msg in enumerate(messages[:10], 1):  # Limit to 10 for readability
+                subject = "No subject"
+                sender = "Unknown sender"
+                snippet = "No preview available"
+                
+                # Extract headers if available
+                if "payload" in msg and "headers" in msg["payload"]:
+                    headers = msg["payload"]["headers"]
+                    for header in headers:
+                        if header.get("name") == "Subject":
+                            subject = header.get("value", "No subject")
+                        elif header.get("name") == "From":
+                            sender = header.get("value", "Unknown sender")
+                
+                if "snippet" in msg:
+                    snippet = msg["snippet"]
+                
+                formatted_emails.append(f"{i}. From: {sender}")
+                formatted_emails.append(f"   Subject: {subject}")
+                formatted_emails.append(f"   Preview: {snippet[:100]}...")
+                formatted_emails.append("")
+            
+            return "\\n".join(formatted_emails)
+            
+        except Exception as e:
+            logger.error(f"Failed to format email list: {e}")
+            return f"Retrieved emails but failed to format them: {str(e)}"
+    
+    def _format_email_list(self, data: Dict[str, Any], title: str = "Recent emails:") -> str:
+        """Legacy format method for backward compatibility."""
+        try:
+            if "result" in data and "content" in data["result"]:
+                content = data["result"]["content"]
+                if isinstance(content, list) and len(content) > 0:
+                    content_text = content[0].get("text", "")
+                    if content_text:
+                        parsed_content = json.loads(content_text)
+                        return self._format_email_list_from_agent_result(parsed_content, title)
+            
+            return "No emails found or unexpected response format."
+            
+        except Exception as e:
+            logger.error(f"Failed to format email list: {e}")
+            return f"Retrieved emails but failed to format them: {str(e)}"
+    
+    def _format_email_details_from_agent_result(self, data: Dict[str, Any]) -> str:
+        """Format detailed email information from Email Agent result."""
+        try:
+            # Extract email details
+            subject = "No subject"
+            sender = "Unknown sender"
+            date = "Unknown date"
+            body = "No body content"
+            
+            if "payload" in data and "headers" in data["payload"]:
+                headers = data["payload"]["headers"]
+                for header in headers:
+                    if header.get("name") == "Subject":
+                        subject = header.get("value", "No subject")
+                    elif header.get("name") == "From":
+                        sender = header.get("value", "Unknown sender")
+                    elif header.get("name") == "Date":
+                        date = header.get("value", "Unknown date")
+            
+            # Try to extract body
+            if "snippet" in data:
+                body = data["snippet"]
+            
+            return f"""Email Details:
+                From: {sender}
+                Subject: {subject}
+                Date: {date}
+                Body: {body}"""
+                            
+        except Exception as e:
+            logger.error(f"Failed to format email details: {e}")
+            return f"Retrieved email but failed to format details: {str(e)}"
+    
+    def _format_email_details(self, data: Dict[str, Any]) -> str:
+        """Legacy format method for backward compatibility."""
+        try:
+            if "result" in data and "content" in data["result"]:
+                content = data["result"]["content"]
+                if isinstance(content, list) and len(content) > 0:
+                    content_text = content[0].get("text", "")
+                    if content_text:
+                        parsed_content = json.loads(content_text)
+                        return self._format_email_details_from_agent_result(parsed_content)
+            
+            return "Email retrieved but could not parse details."
+            
+        except Exception as e:
+            logger.error(f"Failed to format email details: {e}")
+            return f"Retrieved email but failed to format details: {str(e)}"
+    
+    def _extract_email_recipient(self, text: str, state: Dict[str, Any]) -> str:
+        """Extract email recipient from text or state."""
+        # Check state first
+        if "email_to" in state:
+            return state["email_to"]
+        
+        # Look for email patterns in text
+        email_pattern = r'\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b'
+        matches = re.findall(email_pattern, text)
+        return matches[0] if matches else ""
+    
+    def _extract_email_subject(self, text: str, state: Dict[str, Any]) -> str:
+        """Extract email subject from text or state."""
+        # Check state first
+        if "email_subject" in state:
+            return state["email_subject"]
+        
+        # Look for subject patterns
+        subject_patterns = [
+            r'subject[:\\s]+([^\\n]+)',
+            r'with subject[:\\s]+([^\\n]+)',
+            r'titled[:\\s]+([^\\n]+)'
+        ]
+        
+        for pattern in subject_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip().strip('"').strip("'")
+        
+        return "Automated Email from MACAE"
+    
+    def _extract_email_body(self, text: str, state: Dict[str, Any]) -> str:
+        """Extract email body from text or state."""
+        # Check state first
+        if "email_body" in state:
+            return state["email_body"]
+        
+        # Look for body patterns
+        body_patterns = [
+            r'body[:\\s]+([^\\n]+)',
+            r'message[:\\s]+([^\\n]+)',
+            r'saying[:\\s]+([^\\n]+)'
+        ]
+        
+        for pattern in body_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip().strip('"').strip("'")
+        
+        return "This is an automated email sent from the Multi-Agent Custom Automation Engine (MACAE)."
+    
+    def _extract_search_query(self, text: str) -> str:
+        """Extract search query from text."""
+        # Look for search patterns
+        search_patterns = [
+            r'search for[:\\s]+([^\\n]+)',
+            r'find emails[:\\s]+([^\\n]+)',
+            r'look for[:\\s]+([^\\n]+)',
+            r'containing[:\\s]+([^\\n]+)'
+        ]
+        
+        for pattern in search_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip().strip('"').strip("'")
+        
+        return ""
+    
+    def _extract_message_id(self, text: str) -> str:
+        """Extract message ID from text."""
+        # Look for message ID patterns
+        id_patterns = [
+            r'id[:\\s]+([a-zA-Z0-9]+)',
+            r'message[:\\s]+([a-zA-Z0-9]+)',
+            r'email[:\\s]+([a-zA-Z0-9]+)'
+        ]
+        
+        for pattern in id_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        return ""
+    
+    def _get_help_message(self) -> str:
+        """Get help message for Gmail agent capabilities."""
+        return """Gmail Agent is ready to help with email tasks. I can:
+
+        • Read recent emails: "read my recent emails" or "check my inbox"
+        • Send emails: "send email to user@example.com with subject 'Hello' and message 'Hi there'"
+        • Search emails: "search for emails containing 'invoice'"
+        • Get specific emails: "get email with ID [message_id]"
+
+        Please specify what you'd like me to do with your emails."""
+
+# Create a function to be used in LangGraph
+async def gmail_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Enhanced Gmail agent node function for LangGraph multi-step workflows."""
+    agent = GmailAgentNode()
+    result = await agent.process(state)
+    
+    # Update state with simplified structure
+    from app.agents.state import AgentStateManager
+    
+    # Add agent result to state
+    agent_result = {
+        "status": "completed",
+        "data": {"gmail_response": result.get("gmail_result", "")},
+        "message": result.get("gmail_result", "")
+    }
+    
+    AgentStateManager.add_agent_result(state, "Gmail", agent_result)
+    
+    # Send progress update if websocket available
+    websocket_manager = state.get("websocket_manager")
+    if websocket_manager:
+        from datetime import datetime
+        progress = AgentStateManager.get_progress_info(state)
+        await websocket_manager.send_message(state["plan_id"], {
+            "type": "step_progress",
+            "data": {
+                "step": progress["current_step"],
+                "total": progress["total_steps"],
+                "agent": "Gmail",
+                "progress_percentage": progress["progress_percentage"],
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+        })
+    
+    # Update result with simplified state
+    result.update({
+        "collected_data": state["collected_data"],  # Use updated state
+        "execution_results": state["execution_results"]  # Use updated state
+    })
+    
+    return result
